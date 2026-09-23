@@ -1,0 +1,26 @@
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data (demos and parsed tables are large; they live in S3 later, not git)
+data/
+*.dem
+*.dem.gz
+*.dem.zst
+*.parquet
+*.duckdb
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
