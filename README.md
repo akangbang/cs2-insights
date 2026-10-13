@@ -1,18 +1,21 @@
-# CS2 Insights
+# CS2 Decision Tracker
 
-Paste your Steam profile link, get concrete insights from your last 10 FACEIT matches.
+A CS2 tracker that grades your decisions, not just your aim.
 
-Most stat sites describe what happened. This tool scores your **buy decisions**: a calibrated round win-probability model estimates whether a force-buy, save, or full buy was the right call given the economy and round state.
+Most stat sites report what happened. This one answers "what should I have done?": it parses your match demos round by round and scores each choice (force vs. save, retake vs. save, peek vs. hold) by the win probability it added or cost. For example: *"Your round-2 force after a pistol loss cost 6% half win chance versus saving."*
 
 ## How it works
-Steam URL → Steam64 ID → FACEIT player → recent matches → demo files → parsed round, economy, and per-player tables (Parquet) → win-probability model → 3 insights per match.
+1. **Get the matches.** Link your Valve match history once with a share code and auth code; the tool pulls every later Premier and Competitive demo. You can also upload `.dem` files. FACEIT and Leetify are optional extra sources.
+2. **Parse.** demoparser2 extracts money, equipment, positions, kills and damage for every round.
+3. **Score.** A round win-probability model feeds an economy chain that rates each buy by its effect on your chance to win the half or match.
+4. **Report.** Insights are SQL views in PostgreSQL, read by the web app, Power BI reports and an Excel "force or save?" calculator.
 
 ## Stack
-Python, DuckDB/SQL, scikit-learn, Streamlit, AWS (S3, Glue/Athena, Lambda, Fargate), Power BI.
+Python (demoparser2, pandas, scikit-learn), PostgreSQL, Power BI, Excel, FastAPI or Streamlit, hosted on AWS (RDS, EC2).
 
 ## Status
-Pre-alpha, Phase 0: validating the data chain by hand.
+Pre-alpha. Phase 1 of 5: data foundation.
 
 ## Setup
-1. Copy `.env.example` to `.env` and add your FACEIT and Steam API keys.
+1. Copy `.env.example` to `.env` and add your keys.
 2. More to come.
