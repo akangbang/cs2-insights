@@ -16,6 +16,27 @@ Python (demoparser2, pandas, scikit-learn), PostgreSQL, Power BI, Excel, FastAPI
 ## Status
 Pre-alpha. Phase 1 of 5: data foundation.
 
-## Setup
-1. Copy `.env.example` to `.env` and add your keys.
-2. More to come.
+## Setup (Windows, PowerShell)
+```powershell
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd bot; npm install; cd ..
+copy .env.example .env      # then fill in the keys
+docker compose up -d        # local PostgreSQL
+python -m pytest            # everything should pass
+```
+
+## Usage
+```powershell
+# Load demo files you already have (.dem, .dem.bz2, .dem.gz, .dem.zst; files or folders)
+python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgoeplays"
+
+# Link a player's Valve match history (auth code defaults to STEAM_AUTH_CODE in .env)
+python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx
+
+# One-time bot login (needs BOT_STEAM_USERNAME / BOT_STEAM_PASSWORD; asks for the Steam Guard code)
+node bot/fetch_demo_urls.js --login
+
+# Queue new matches for every linked player, then download and load them. Run at least daily.
+python -m cs2_insights.fetch --sync
+```

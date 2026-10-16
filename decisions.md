@@ -36,6 +36,12 @@ Options: Local only, a managed host (Render, Railway), AWS.
 Choice + why: AWS. PostgreSQL on RDS, the demo bot and parser on EC2. Puts AWS on the resume next to the proposal's stack. S3 for raw .dem files to decide later.
 Revisit if: AWS cost is too high before there are paying members.
 
+## 2026-10-16 — Demo bot in Node, raw demos deleted after parsing
+Context: Valve demo URLs come only from the CS2 game coordinator, which needs a logged-in Steam client. Valve keeps demos about 30 days (Leetify, Feb 2024; no official figure).
+Options: Python Steam libraries (unmaintained for CS2), Node `steam-user` + `globaloffensive` (maintained, CS2 support), user uploads only.
+Choice + why: A small Node script asks the game coordinator for each share code's demo URL; Python handles the queue, download, parsing and loading. A dedicated bot Steam account logs in once and saves a refresh token. Fetch runs at least daily so nothing expires first. Downloaded demos are deleted after parsing (about 200-400 MB each); the parsed rows are what we keep.
+Revisit if: Valve restricts the bot account or rate limits it, or we need to re-parse old demos for new features (then keep raw files on S3).
+
 ---
 
 ## Superseded
