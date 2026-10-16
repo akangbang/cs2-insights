@@ -22,6 +22,8 @@ PLAYER_PROPS = [
     "has_defuser",
 ]
 VALVE_DEMO_NAME = re.compile(r"match730_(\d+)_")
+# Regulation is 24 rounds (MR12); after that, overtime halves start with set money, not pistols.
+REGULATION_ROUNDS = 24
 
 
 @dataclass
@@ -39,13 +41,65 @@ def match_id_from_path(path: Path) -> str:
 
 
 def buy_type(round_number: int, first_round_of_half: set[int], equip_value: float) -> str:
-    if round_number in first_round_of_half:
+    if round_number in first_round_of_half and round_number <= REGULATION_ROUNDS:
         return "pistol"
     if equip_value < ECO_MAX:
         return "eco"
     if equip_value <= FORCE_MAX:
         return "force"
     return "full"
+
+
+def pair_rounds(ends: pd.DataFrame, freeze_ends: list[int]) -> list[dict]:
+    """Pair each round end with the last freeze end before it (skips warmup and restarts).
+
+    Rounds are numbered consecutively, so a round end without a freeze end doesn't leave a gap.
+    """
+    rounds = []
+    previous_end = -1
+    for end in ends.sort_values("tick").itertuples():
+        starts = [t for t in freeze_ends if previous_end < t < end.tick]
+        if starts:
+            rounds.append(
+                {
+                    "round": len(rounds) + 1,
+                    "freeze_end_tick": starts[-1],
+                    "end_tick": end.tick,
+                    "winner_side": end.winner,
+                    "reason": end.reason,
+                }
+            )
+        previous_end = end.tick
+    return rounds
+
+
+def assign_teams(players: pd.DataFrame) -> pd.Series:
+    """Label each player-round "A" or "B", where A is the team that started on CT.
+
+    Each round, team A's side is the side most of A's starting players are on; everyone on
+    that side is A. This keeps late joiners and substitutes on the right team.
+    """
+    first_round = players["round"].min()
+    starters = set(players[(players["round"] == first_round) & (players["side"] == "CT")]["steamid"])
+    a_side = {}
+    for number, group in players.groupby("round"):
+        known = group[group["steamid"].isin(starters)]["side"]
+        a_side[number] = known.mode().iat[0] if not known.empty else None
+    # Rounds with none of A's starters fall back to the previous round's side.
+    last = "CT"
+    for number in sorted(a_side):
+        a_side[number] = a_side[number] or last
+        last = a_side[number]
+    return pd.Series(
+        ["A" if side == a_side[r] else "B" for r, side in zip(players["round"], players["side"])],
+        index=players.index,
+    )
+
+
+def first_rounds_of_halves(a_sides: pd.Series) -> set[int]:
+    """Rounds where team A's side differs from the round before, plus the first round."""
+    rounds = list(a_sides.index)
+    return {rounds[0]} | {r for prev, r in zip(rounds, rounds[1:]) if a_sides[prev] != a_sides[r]}
 
 
 def parse_demo(path: str | Path) -> ParsedDemo:
@@ -55,29 +109,12 @@ def parse_demo(path: str | Path) -> ParsedDemo:
     match_id = match_id_from_path(path)
 
     ends = parser.parse_event("round_end")
-    ends = ends[ends["winner"].isin(["CT", "T"])].sort_values("tick").reset_index(drop=True)
+    ends = ends[ends["winner"].isin(["CT", "T"])]
     freeze_ends = sorted(parser.parse_event("round_freeze_end")["tick"].tolist())
-
-    # Pair each round end with the last freeze end before it (skips warmup and restarts).
-    rounds = []
-    previous_end = -1
-    for number, end in enumerate(ends.itertuples(), start=1):
-        starts = [t for t in freeze_ends if previous_end < t < end.tick]
-        if starts:
-            rounds.append(
-                {
-                    "match_id": match_id,
-                    "round": number,
-                    "freeze_end_tick": starts[-1],
-                    "end_tick": end.tick,
-                    "winner_side": end.winner,
-                    "reason": end.reason,
-                }
-            )
-        previous_end = end.tick
-    rounds = pd.DataFrame(rounds)
+    rounds = pd.DataFrame(pair_rounds(ends, freeze_ends))
     if rounds.empty:
         raise ValueError(f"No completed rounds found in {path.name}.")
+    rounds.insert(0, "match_id", match_id)
 
     players = parser.parse_ticks(PLAYER_PROPS, ticks=rounds["freeze_end_tick"].tolist())
     players = players[players["team_num"].isin(SIDES)].copy()
@@ -86,10 +123,7 @@ def parse_demo(path: str | Path) -> ParsedDemo:
         rounds[["round", "freeze_end_tick"]], left_on="tick", right_on="freeze_end_tick"
     )
 
-    # Team A is whoever started on CT; players keep their team when sides swap.
-    first_round = players["round"].min()
-    team_a = set(players[(players["round"] == first_round) & (players["side"] == "CT")]["steamid"])
-    players["team"] = players["steamid"].map(lambda s: "A" if s in team_a else "B")
+    players["team"] = assign_teams(players)
 
     player_rounds = pd.DataFrame(
         {
@@ -122,11 +156,7 @@ def parse_demo(path: str | Path) -> ParsedDemo:
         .reset_index()
     )
 
-    # Rounds where a team's side differs from the round before are the first of a half.
-    a_sides = team_rounds[team_rounds["team"] == "A"].set_index("round")["side"]
-    first_of_half = {a_sides.index[0]} | {
-        r for prev, r in zip(a_sides.index, a_sides.index[1:]) if a_sides[prev] != a_sides[r]
-    }
+    first_of_half = first_rounds_of_halves(team_rounds[team_rounds["team"] == "A"].set_index("round")["side"])
 
     team_rounds = team_rounds.merge(rounds[["round", "winner_side"]], on="round")
     team_rounds["won"] = team_rounds["side"] == team_rounds["winner_side"]
