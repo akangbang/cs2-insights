@@ -131,3 +131,22 @@ def iter_share_codes(
         yield next_code
         current = next_code
         count += 1
+
+
+RESOLVE_VANITY_URL = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1"
+
+
+def resolve_steam64(api_key: str, profile: str, session: requests.Session | None = None) -> str:
+    """Turn any pasted Steam profile link (or bare Steam64) into a Steam64 ID."""
+    ref = parse_steam_url(profile)
+    if ref.kind == "steam64":
+        return ref.value
+    response = (session or requests).get(
+        RESOLVE_VANITY_URL, params={"key": api_key, "vanityurl": ref.value}, timeout=10
+    )
+    if response.status_code != 200:
+        raise SteamAPIError(f"Steam returned HTTP {response.status_code} looking up '{ref.value}'.")
+    result = response.json().get("response", {})
+    if result.get("success") != 1:
+        raise SteamAPIError(f"No Steam profile found for '{ref.value}'.")
+    return result["steamid"]
