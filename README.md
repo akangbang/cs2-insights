@@ -29,7 +29,7 @@ python -m pytest            # everything should pass
 ## Usage
 ```powershell
 # Load demo files you already have (.dem, .dem.bz2, .dem.gz, .dem.zst; files or folders)
-python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgoeplays"
+python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays"
 
 # Link a player's Valve match history (auth code defaults to STEAM_AUTH_CODE in .env)
 python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx
