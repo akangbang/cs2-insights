@@ -1,0 +1,10 @@
+{
+  "name": "decision-tracker-bot",
+  "private": true,
+  "description": "Asks the CS2 game coordinator for demo download URLs by share code.",
+  "type": "commonjs",
+  "dependencies": {
+    "globaloffensive": "^3.3.0",
+    "steam-user": "^5.3.0"
+  }
+}

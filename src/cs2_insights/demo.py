@@ -102,11 +102,12 @@ def first_rounds_of_halves(a_sides: pd.Series) -> set[int]:
     return {rounds[0]} | {r for prev, r in zip(rounds, rounds[1:]) if a_sides[prev] != a_sides[r]}
 
 
-def parse_demo(path: str | Path) -> ParsedDemo:
+def parse_demo(path: str | Path, match_id: str | None = None, source: str | None = None) -> ParsedDemo:
+    """Parse one demo. match_id and source default to what the file name says."""
     path = Path(path)
     parser = DemoParser(str(path))
     header = parser.parse_header()
-    match_id = match_id_from_path(path)
+    match_id = match_id or match_id_from_path(path)
 
     ends = parser.parse_event("round_end")
     ends = ends[ends["winner"].isin(["CT", "T"])]
@@ -178,7 +179,7 @@ def parse_demo(path: str | Path) -> ParsedDemo:
         [
             {
                 "match_id": match_id,
-                "source": "valve" if VALVE_DEMO_NAME.match(path.name) else "upload",
+                "source": source or ("valve" if VALVE_DEMO_NAME.match(path.name) else "upload"),
                 "map": header.get("map_name"),
                 "server": header.get("server_name"),
                 "patch_version": header.get("patch_version"),
