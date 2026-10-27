@@ -43,13 +43,30 @@ POOL = pd.DataFrame(
 )
 
 
-def test_expected_win_rate_is_smoothed_toward_buy_type_rate():
+def test_expected_win_rate_is_smoothed_toward_a_symmetric_prior():
+    # Overall win rates: force 27/90 = 0.3, full (63 + 81)/180 = 0.8, eco 9/90 = 0.1.
     rate, sample = expected_win_rate(POOL, "force", "full")
     assert sample == 90
-    assert rate == pytest.approx((27 + 10 * 0.3) / 100)
-    # An unseen matchup falls back to the buy type's overall rate.
+    assert rate == pytest.approx((27 + 10 * (0.3 + 1 - 0.8) / 2) / 100)
+    # An unseen matchup falls back to the prior alone.
     rate, sample = expected_win_rate(POOL, "force", "eco")
-    assert sample == 0 and rate == pytest.approx(0.3)
+    assert sample == 0 and rate == pytest.approx((0.3 + 1 - 0.1) / 2)
+
+
+def test_matchup_and_its_mirror_sum_to_one():
+    # A pool built from real rounds: every round counts once for each team.
+    rounds = []
+    for number, (a_buy, b_buy, a_won) in enumerate(
+        [("full", "eco", True), ("full", "eco", False), ("eco", "full", False), ("force", "full", True), ("pistol", "pistol", True)]
+    ):
+        rounds += [
+            {"match_id": "m", "round": number, "team": "A", "buy_type": a_buy, "won": a_won},
+            {"match_id": "m", "round": number, "team": "B", "buy_type": b_buy, "won": not a_won},
+        ]
+    pool = pooled_rates(pd.DataFrame(rounds))
+    for buy, opponent in [("full", "eco"), ("force", "full"), ("pistol", "pistol"), ("eco", "force")]:
+        total = expected_win_rate(pool, buy, opponent)[0] + expected_win_rate(pool, opponent, buy)[0]
+        assert total == pytest.approx(1.0)
 
 
 def test_pooled_rates_counts_both_teams():

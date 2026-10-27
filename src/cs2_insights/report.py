@@ -55,9 +55,18 @@ def pooled_rates(team_rounds: pd.DataFrame) -> pd.DataFrame:
 
 
 def expected_win_rate(pool: pd.DataFrame, buy: str, opponent_buy: str) -> tuple[float, int]:
-    """Smoothed pooled win rate for a matchup, and how many rounds it's based on."""
-    by_buy = pool[pool["buy_type"] == buy]
-    prior = by_buy["wins"].sum() / by_buy["rounds"].sum() if by_buy["rounds"].sum() else 0.5
+    """Smoothed pooled win rate for a matchup, and how many rounds it's based on.
+
+    The prior averages "how often this buy wins" with "how often the opponent's buy loses",
+    so a matchup and its mirror always sum to 1 and both teams' expected wins add up to the
+    rounds played.
+    """
+
+    def overall(buy_type: str) -> float:
+        rows = pool[pool["buy_type"] == buy_type]
+        return rows["wins"].sum() / rows["rounds"].sum() if rows["rounds"].sum() else 0.5
+
+    prior = (overall(buy) + 1 - overall(opponent_buy)) / 2
     match = pool[(pool["buy_type"] == buy) & (pool["opponent_buy_type"] == opponent_buy)]
     wins, rounds = (int(match["wins"].iat[0]), int(match["rounds"].iat[0])) if not match.empty else (0, 0)
     return (wins + SMOOTHING_ROUNDS * prior) / (rounds + SMOOTHING_ROUNDS), rounds

@@ -269,7 +269,11 @@ def report_page() -> None:
         try:
             parsed = parse_upload(upload)
         except Exception as error:
-            st.error(f"Couldn't read that demo: {error}")
+            st.error(
+                "Couldn't read that demo. It may not be a CS2 demo, or the download may be incomplete. "
+                "Try downloading the match again (CS2: Watch → Your Matches → Download)."
+            )
+            st.caption(f"Details: {type(error).__name__}: {error}")
             return
 
     pool = save_and_pool(parsed)
