@@ -27,6 +27,9 @@ python -m pytest            # everything should pass
 
 ## Usage
 ```powershell
+# The app: pick one of your CS2 replays or upload a demo, choose yourself, get the report
+streamlit run app.py
+
 # Load demo files you already have (.dem, .dem.bz2, .dem.gz, .dem.zst; files or folders)
 python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays"
 

@@ -69,7 +69,7 @@ def test_report_flags_force_trap_upset_and_split_buy():
 
     assert report.summary["result"] == "Loss"
     assert report.rounds["verdict"].tolist() == [
-        "Lost as expected", "Lost as expected", "Won against the odds", "Lost a round you were favoured in",
+        "Expected loss", "Expected loss", "Upset win", "Upset loss",
     ]
     assert report.rounds["split_buy"].tolist() == [False, False, True, False]
     titles = [m.title for m in report.moments]

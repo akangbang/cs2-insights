@@ -69,12 +69,16 @@ def players_in(parsed: ParsedDemo) -> pd.DataFrame:
     return last[["steamid", "name", "team"]].sort_values(["team", "name"]).reset_index(drop=True)
 
 
+UPSET_WIN = "Upset win"  # won a matchup that usually loses
+UPSET_LOSS = "Upset loss"  # lost a matchup that usually wins
+
+
 def _verdict(won: bool, expected: float) -> str:
     if won and expected < UPSET_BELOW:
-        return "Won against the odds"
+        return UPSET_WIN
     if not won and expected > FAVOURED_ABOVE:
-        return "Lost a round you were favoured in"
-    return "Won as expected" if won else "Lost as expected"
+        return UPSET_LOSS
+    return "Expected win" if won else "Expected loss"
 
 
 def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report:
@@ -130,8 +134,8 @@ def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report
         "result": "Win" if my_score > their_score else "Loss" if my_score < their_score else "Draw",
         "name": me["name"].iat[-1],
         "rounds": len(rounds),
-        "upsets_won": int((rounds["verdict"] == "Won against the odds").sum()),
-        "favoured_lost": int((rounds["verdict"] == "Lost a round you were favoured in").sum()),
+        "upsets_won": int((rounds["verdict"] == UPSET_WIN).sum()),
+        "favoured_lost": int((rounds["verdict"] == UPSET_LOSS).sum()),
         "expected_wins": round(float(rounds["expected"].sum()), 1),
         "pool_rounds": int(pool["rounds"].sum()) // 2,
     }
@@ -189,7 +193,7 @@ def _moments(rounds: pd.DataFrame) -> list[Moment]:
                     int(number),
                     "bad",
                     f"Round {number}: the force that cost two rounds",
-                    f"You forced into their {label(row['their_buy']).lower()} "
+                    f"You forced against their {label(row['their_buy']).lower()} "
                     f"(a matchup that wins {row['expected']:.0%} of the time), lost, "
                     f"and had to eco round {number + 1}.",
                 )
@@ -209,7 +213,7 @@ def _moments(rounds: pd.DataFrame) -> list[Moment]:
             )
         )
 
-    upsets = rounds[rounds["verdict"] == "Won against the odds"].sort_values("expected")
+    upsets = rounds[rounds["verdict"] == UPSET_WIN].sort_values("expected")
     if len(upsets):
         best = upsets.iloc[0]
         moments.append(
@@ -222,7 +226,7 @@ def _moments(rounds: pd.DataFrame) -> list[Moment]:
             )
         )
 
-    thrown = rounds[rounds["verdict"] == "Lost a round you were favoured in"].sort_values("expected", ascending=False)
+    thrown = rounds[rounds["verdict"] == UPSET_LOSS].sort_values("expected", ascending=False)
     if len(thrown):
         worst = thrown.iloc[0]
         moments.append(

@@ -1,0 +1,18 @@
+[server]
+# CS2 demos are 150-400 MB.
+maxUploadSize = 1024
+
+[browser]
+# Don't send usage statistics to Streamlit; the privacy policy says nothing leaves the app.
+gatherUsageStats = false
+
+[client]
+# Hide the Deploy button and developer menu.
+toolbarMode = "viewer"
+
+# Halftime blue as the accent (validated chart palette slot 1), per mode so dark mode still follows the OS.
+[theme.light]
+primaryColor = "#2a78d6"
+
+[theme.dark]
+primaryColor = "#3987e5"
