@@ -27,6 +27,3 @@ data/
 .DS_Store
 Thumbs.db
 
-# Demo bot
-bot/node_modules/
-bot/.refresh_token

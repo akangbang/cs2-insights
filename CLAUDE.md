@@ -1,12 +1,13 @@
 # CLAUDE.md
 
 ## Project
-CS2 Decision Tracker (working name; repo is still `cs2-insights`). A CS2 tracker that grades players' decisions, not just their aim: it parses round-level demo data and tells players what each choice (force vs. save, retake vs. save, peek vs. hold) did to their win probability. Existing sites (Leetify, csstats, FACEIT stats) report what happened; this answers "what should I have done?". Source of truth: the proposal "CS2 Decision Tracker: Proposal" (Oct 6, 2026).
+Brand name TBD (must not contain CS2, Counter-Strike or Valve marks); repo is still `cs2-insights`. Working description: a decision tracker for CS2. A CS2 tracker that grades players' decisions, not just their aim: it parses round-level demo data and tells players what each choice (force vs. save, retake vs. save, peek vs. hold) did to their win probability. Existing sites (Leetify, csstats, FACEIT stats) report what happened; this answers "what should I have done?". Source of truth: the proposal "CS2 Decision Tracker: Proposal" (Oct 6, 2026).
 
 Data sources, all ending in the same rounds table with a `source` column, each switchable per tier:
-- Core: Valve match share codes. Player gives one share code + match history auth code; Steam Web API returns every later code; a Steam game client bot fetches each demo.
-- Fallback: user-uploaded .dem files (no approval needed, covers older and FACEIT matches).
-- Optional: FACEIT Data API + Downloads API; Leetify public API.
+- Core: players bring their own demos (they download in CS2 or FACEIT and upload; later a small local helper that watches the replays folder, ideally parsing on their machine and sending only results).
+- FACEIT Downloads API once approved (applied 2026-10-13): official, no ToS problem, and FACEIT players are the most likely to pay.
+- Steam Web API share code linking only as a "these matches are ready to analyze" reminder. NO demo-fetching bot (dropped 2026-10-27; see Legal guardrails).
+- Optional later: Leetify public API.
 
 Parser: demoparser2. Model: one live round win-probability logistic regression (map CT-win baseline + alive, HP, equipment, utility, time, bomb, bomb x time), feeding an economy chain (Markov model, solved backwards) that scores each buy by half/match win chance. Conditional win rates are built first as a sanity check. Buy labels from team equipment value: eco < $5,000, force/half $5,000-$20,000, full > $20,000 (to tune).
 
@@ -14,12 +15,13 @@ Stack: Python (ETL, demoparser2, pandas, scikit-learn) -> PostgreSQL (star schem
 
 Membership: Free (last 10 matches, standard stats, one teaser insight per match), Pro $5/month or $40/year (full history, all insights, buy grader every round, weekly "three things to fix"), Team $15/month for 5. Payments via Stripe. Growth via shareable "your worst buy this week" cards.
 
-Build phases:
-1. Data foundation: share code linking, demo-fetching bot, demoparser2 loading rounds into PostgreSQL, .dem upload fallback. Apply for the FACEIT Downloads API on day one.
-2. Win-probability model and buy grader: train on a few thousand parsed matches, validate, first Power BI report on force-buy outcomes.
-3. Remaining insights (tilt, trades, utility, predictability, duo synergy as SQL views) and the Excel calculator.
-4. Member web app: link share code, see insights, Stripe checkout for Pro.
-5. More sources and growth: FACEIT and Leetify connectors, shareable cards, Team tier.
+Build phases (revised 2026-10-27, revenue first):
+1. Done: parser, PostgreSQL, ingest, share code linking (bot removed).
+2. Week 1: web app: upload a demo, get a free economy report (every buy rated, win rates by buy type). Privacy policy, terms, "not affiliated with Valve" footer.
+3. Week 2: shareable "worst buy" image cards, email signup, post to r/cs2, r/GlobalOffensive, FACEIT Discords.
+4. Week 3: buy grader v1 on pooled uploads (target 100+ matches), then the live win-probability model and economy chain.
+5. Week 4: Pro tier ($5/month or $40/year) via a merchant of record (Paddle or Lemon Squeezy), after the LLC exists.
+6. Later: FACEIT import when approved, local helper app, Power BI reports, Excel calculator, Team tier, AWS hosting.
 
 ## Goals
 1. Ship: launch as a real product players pay for to improve their game. This is the priority.
@@ -28,7 +30,13 @@ Build phases:
 ## How to work with me
 - Claude writes the code (switched 2026-10-13; I'm no longer coding by hand to learn). Build in small working pieces, test each one, and tell me briefly what was built and what you need from me (keys, files, decisions).
 - Keep product thinking in view: differentiation vs. Leetify/csstats/Scope.gg (scoring decisions as win probability added or cost), validate insights with real players before building the model, demo parsing cost at scale, Steam/FACEIT/Leetify API terms for paid use.
-- Open risks to verify early in Phase 1: how long Valve keeps demos (proposal says roughly a month); demo bot on a Steam account needs care with rate limits and Steam terms; FACEIT Downloads API approval takes about 30 days; whether FACEIT/Leetify terms allow paid use.
+- Legal guardrails (from reading the terms 2026-10-27; get a lawyer consult before charging):
+  - No bots or automated Steam accounts: Steam Subscriber Agreement 4.C bans "scripts, bots, macros, or other non-human-controlled systems"; 2.G(iii) bans commercial use of accounts.
+  - Steam Web API terms: privacy policy required, fetch a user's data only when they ask, max 100,000 calls/day, never imply Valve endorsement, Valve can revoke anytime. Paid use is ambiguous ("personal use" wording), so paid features must rest on demo analysis, not API data.
+  - No "CS2"/"Counter-Strike"/Valve logos in the brand; descriptive "for CS2" is fine with a "not affiliated with Valve" disclaimer.
+  - Privacy: demos hold 9 other players' Steam IDs and names. Store the minimum, honor deletion requests, encrypt auth codes. Don't redistribute demo files.
+  - Business: LLC before taking money; terms of service and refund policy; merchant of record for global sales tax/VAT.
+  - Still to check: FACEIT and Leetify terms for paid use; Valve demo retention (~30 days, third-party sources).
 - Small, frequent commits with clear imperative messages. Claude may commit locally; never push unless I ask.
 - Terminal is Windows PowerShell 5.1: no `&&`, use `;` or separate lines.
 
@@ -40,3 +48,4 @@ Build phases:
 - 2026-10-13: Plan switched to the Decision Tracker proposal (above). Earlier FACEIT-only/Parquet/DuckDB/AWS plan superseded; see decisions.md. Next: Phase 1. Get a Steam Web API key, verify Valve demo retention. Open: keep CLAUDE.md in git or local only (undecided).
 - 2026-10-13: Built sharecode.py (decode/encode, verified against a published code), Steam match history walker in steam.py (tested with a fake Steam server, not yet live), demo.py (demoparser2 -> match, rounds, team_rounds, player_rounds DataFrames; ~1s per demo). STEAM_API_KEY and STEAM_AUTH_CODE are in .env. 11 of my own demos (Mar-Aug 2026, 180-390 MB each) are in CS2's replays folder and all parse. Buy cut-offs need tuning: a $5,700 T round-2 buy counts as "force". Next: live test of the walker (needs a share code from Steam's "Access to your match history" page), PostgreSQL in Docker + loader, then research the demo-fetching bot.
 - 2026-10-16: Phase 1 code complete, 58 tests passing. demo.py fixed (late joiners, overtime, round gaps). PostgreSQL 16 in Docker (docker-compose.yml, sql/schema.sql: matches, rounds, team_rounds, player_rounds, players, linked_accounts, share_codes, view v_buy_matchup_win_rates). `python -m cs2_insights.ingest` loads .dem/.bz2/.gz/.zst (my 11 demos loaded, 12s). `cs2_insights.link` links accounts and queues share codes; `cs2_insights.fetch --sync` asks the Node bot (bot/fetch_demo_urls.js, steam-user + globaloffensive) for demo URLs, downloads, parses, loads, deletes the file. Valve demo retention ~30 days (third-party sources). Not yet run live: Steam match history walk (need a share code), bot (need a bot Steam account). Auth codes are stored in plain text in linked_accounts; encrypt before real users. Kills/positions aren't parsed yet (needed for the Phase 2 live model).
+- 2026-10-27: Project folder moved from OneDrive\Desktop to C:\Users\andre\Desktop\cs2-insights (the OneDrive copy is stale placeholders); .venv rebuilt there. Read the Steam Subscriber Agreement and Web API terms: the demo bot violates SSA 4.C, so removed bot/ and fetch.py (still in git history). Plan switched to players bringing their own demos; revenue-first plan above. Brand name being chosen.

@@ -37,10 +37,22 @@ Choice + why: AWS. PostgreSQL on RDS, the demo bot and parser on EC2. Puts AWS o
 Revisit if: AWS cost is too high before there are paying members.
 
 ## 2026-10-16 — Demo bot in Node, raw demos deleted after parsing
+**Superseded 2026-10-27** by "Drop the demo bot; players bring their own demos" (bot breaks Steam SSA 4.C). Deleting raw demos after parsing still applies.
 Context: Valve demo URLs come only from the CS2 game coordinator, which needs a logged-in Steam client. Valve keeps demos about 30 days (Leetify, Feb 2024; no official figure).
 Options: Python Steam libraries (unmaintained for CS2), Node `steam-user` + `globaloffensive` (maintained, CS2 support), user uploads only.
 Choice + why: A small Node script asks the game coordinator for each share code's demo URL; Python handles the queue, download, parsing and loading. A dedicated bot Steam account logs in once and saves a refresh token. Fetch runs at least daily so nothing expires first. Downloaded demos are deleted after parsing (about 200-400 MB each); the parsed rows are what we keep.
 Revisit if: Valve restricts the bot account or rate limits it, or we need to re-parse old demos for new features (then keep raw files on S3).
+
+## 2026-10-27 — Drop the demo bot; players bring their own demos
+Context: The Steam Subscriber Agreement (4.C) bans "scripts, bots, macros, or other non-human-controlled systems" and (2.G(iii)) commercial use of accounts. Competitors run bots anyway, but that is tolerance, not permission, and legal risk must stay low.
+Options: Ship the bot like Leetify and csstats; players upload their own demos; FACEIT's official Downloads API.
+Choice + why: Players provide their own demos (upload now, a local helper later, ideally parsing on their machine), plus FACEIT's Downloads API once approved. Share code linking stays only as an official-API reminder of which matches are ready. Removes the bot ToS risk, demo storage costs and most server load. Supersedes "Demo bot in Node" and the core-source part of "Valve share codes as the core data source".
+Revisit if: Valve publishes an approved way to fetch matchmaking demos, or upload friction blocks growth.
+
+## 2026-10-27 — Revenue-first plan and legal setup
+Context: Need revenue soon without legal exposure.
+Choice + why: Ship a free upload-and-report web app first, then shareable cards, then the buy grader, then Pro at $5/month. Form an LLC before taking payments; sell through a merchant of record (Paddle or Lemon Squeezy) so global sales tax, VAT and chargebacks are handled. Brand name without Valve trademarks, with a "not affiliated with Valve" disclaimer.
+Revisit if: Users won't upload demos, or the free report doesn't get traction.
 
 ---
 
