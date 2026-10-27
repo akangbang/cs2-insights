@@ -53,7 +53,7 @@ def plain_demo(path: Path) -> Iterator[Path]:
 def ingest(path: Path, conn, force: bool = False, match_id: str | None = None, source: str | None = None) -> str:
     """Parse and load one demo. Returns a one-line summary."""
     stem = Path(path.name[: -len(path.suffix)]) if path.suffix.lower() != ".dem" else path
-    if not force and db.match_exists(conn, match_id or match_id_from_path(stem)):
+    if not force and db.match_is_current(conn, match_id or match_id_from_path(stem)):
         return f"skip   {path.name} (already loaded)"
     with plain_demo(path) as demo:
         parsed = parse_demo(demo, match_id=match_id, source=source)

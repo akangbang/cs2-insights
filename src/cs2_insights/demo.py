@@ -1,9 +1,10 @@
-"""Turn a CS2 .dem file into round-level economy tables with demoparser2."""
+"""Turn a CS2 .dem file into round-level economy and fight tables with demoparser2."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from demoparser2 import DemoParser
 
@@ -24,6 +25,16 @@ PLAYER_PROPS = [
 VALVE_DEMO_NAME = re.compile(r"match730_(\d+)_")
 # Regulation is 24 rounds (MR12); after that, overtime halves start with set money, not pistols.
 REGULATION_ROUNDS = 24
+# Bump when parse_demo extracts something new, so stored matches get re-parsed.
+PARSER_VERSION = 2
+
+# Fights: every death, and where each living teammate stood and aimed at that moment.
+TICK_RATE = 64
+SPEED_SAMPLE_TICKS = 16  # movement speed is measured over the quarter second before a death
+TRADE_LOOK_SECONDS = 5  # a kill on the killer this soon after a death is recorded as a trade
+EYE_HEIGHT, CROUCH_EYE_HEIGHT, CHEST_HEIGHT = 64, 46, 50
+DEATH_PROPS = ["last_place_name", "current_equip_value", "flash_duration"]
+POSITION_PROPS = ["X", "Y", "Z", "pitch", "yaw", "is_alive", "ducking"]
 
 
 @dataclass
@@ -32,6 +43,8 @@ class ParsedDemo:
     rounds: pd.DataFrame  # one row per round
     team_rounds: pd.DataFrame  # one row per team per round
     player_rounds: pd.DataFrame  # one row per player per round
+    deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per death in live play
+    trade_chances: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per death per living teammate
 
 
 def match_id_from_path(path: Path) -> str:
@@ -101,6 +114,125 @@ def first_rounds_of_halves(a_sides: pd.Series) -> set[int]:
     """Rounds where team A's side differs from the round before, plus the first round."""
     rounds = list(a_sides.index)
     return {rounds[0]} | {r for prev, r in zip(rounds, rounds[1:]) if a_sides[prev] != a_sides[r]}
+
+
+def aim_angle(eye, pitch: float, yaw: float, target) -> float:
+    """Degrees between where a player aims (pitch/yaw, CS2 convention) and the direction to `target`."""
+    pitch, yaw = np.radians(pitch), np.radians(yaw)
+    view = np.array([np.cos(pitch) * np.cos(yaw), np.cos(pitch) * np.sin(yaw), -np.sin(pitch)])
+    to_target = np.asarray(target, float) - np.asarray(eye, float)
+    distance = np.linalg.norm(to_target)
+    if distance == 0:
+        return 0.0
+    return float(np.degrees(np.arccos(np.clip(view @ to_target / distance, -1, 1))))
+
+
+def _steamid(value) -> str | None:
+    """Event steamids arrive as strings, ints or NaN (world damage); normalise to str or None."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    text = str(int(value)) if isinstance(value, (int, float, np.integer, np.floating)) else str(value)
+    return None if text in ("", "0") else text
+
+
+def parse_fights(parser: DemoParser, rounds: pd.DataFrame, player_rounds: pd.DataFrame,
+                 team_rounds: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Deaths during live play, plus where each living teammate of the victim stood and aimed."""
+    events = parser.parse_event("player_death", player=DEATH_PROPS).sort_values("tick")
+    plants = parser.parse_event("bomb_planted")
+    plant_ticks = plants["tick"].tolist() if "tick" in plants else []
+    team_of = player_rounds.set_index(["round", "steamid"])["team"].to_dict()
+    start_alive = team_rounds.set_index(["round", "team"])["players"].to_dict()
+
+    live = [
+        (r, events[(events["tick"] >= r.freeze_end_tick) & (events["tick"] <= r.end_tick)]) for r in rounds.itertuples()
+    ]
+    ticks = sorted({int(t) for _, frame in live for t in frame["tick"]})
+    if not ticks:
+        return pd.DataFrame(), pd.DataFrame()
+    positions = parser.parse_ticks(POSITION_PROPS, ticks=sorted(set(ticks) | {t - SPEED_SAMPLE_TICKS for t in ticks}))
+    positions["steamid"] = positions["steamid"].map(_steamid)
+    by_tick = {tick: group.set_index("steamid").to_dict("index") for tick, group in positions.groupby("tick")}
+
+    deaths, chances = [], []
+    for r, frame in live:
+        alive = {team: int(start_alive.get((r.round, team), 0)) for team in "AB"}
+        plant = min((t for t in plant_ticks if r.freeze_end_tick <= t <= r.end_tick), default=None)
+        for d in frame.itertuples():
+            tick = int(d.tick)
+            victim, killer = _steamid(d.user_steamid), _steamid(d.attacker_steamid)
+            victim_team = team_of.get((r.round, victim))
+            if victim_team is None:
+                continue
+            enemy_team = "B" if victim_team == "A" else "A"
+            killer_team = team_of.get((r.round, killer)) if killer else None
+            now = by_tick.get(tick, {})
+            here, there = now.get(victim, {}), now.get(killer, {})
+            before = by_tick.get(tick - SPEED_SAMPLE_TICKS, {}).get(victim)
+            speed = (
+                float(np.hypot(here["X"] - before["X"], here["Y"] - before["Y"]) * TICK_RATE / SPEED_SAMPLE_TICKS)
+                if here and before else None
+            )
+
+            traded_by, trade_seconds = None, None
+            if killer_team == enemy_team:
+                later = frame[(frame["tick"] > tick) & (frame["tick"] <= tick + TRADE_LOOK_SECONDS * TICK_RATE)]
+                for kill in later.itertuples():
+                    avenger = _steamid(kill.attacker_steamid)
+                    if _steamid(kill.user_steamid) == killer and team_of.get((r.round, avenger)) == victim_team:
+                        traded_by, trade_seconds = avenger, (int(kill.tick) - tick) / TICK_RATE
+                        break
+
+            deaths.append(
+                {
+                    "round": int(r.round),
+                    "tick": tick,
+                    "round_seconds": (tick - r.freeze_end_tick) / TICK_RATE,
+                    "victim": victim,
+                    "killer": killer,
+                    "victim_team": victim_team,
+                    "killer_team": killer_team,
+                    "weapon": d.weapon,
+                    "headshot": bool(d.headshot),
+                    "victim_place": d.user_last_place_name or None,
+                    "killer_place": d.attacker_last_place_name or None,
+                    "victim_equip": int(d.user_current_equip_value or 0),
+                    "victim_blind": bool((d.user_flash_duration or 0) > 0),
+                    "victim_speed": speed,
+                    "victim_x": here.get("X"),
+                    "victim_y": here.get("Y"),
+                    "killer_x": there.get("X"),
+                    "killer_y": there.get("Y"),
+                    "team_alive": alive[victim_team],
+                    "enemies_alive": alive[enemy_team],
+                    "bomb_planted": plant is not None and tick >= plant,
+                    "traded_by": traded_by,
+                    "trade_seconds": trade_seconds,
+                }
+            )
+
+            if killer_team == enemy_team and there:
+                target = (there["X"], there["Y"], there["Z"] + CHEST_HEIGHT)
+                for mate, m in now.items():
+                    if mate == victim or not m["is_alive"] or team_of.get((r.round, mate)) != victim_team:
+                        continue
+                    eye = (m["X"], m["Y"], m["Z"] + (CROUCH_EYE_HEIGHT if m["ducking"] else EYE_HEIGHT))
+                    chances.append(
+                        {
+                            "round": int(r.round),
+                            "tick": tick,
+                            "victim": victim,
+                            "mate": mate,
+                            "distance_to_killer": float(np.linalg.norm(np.subtract(target, eye))),
+                            "distance_to_victim": float(np.hypot(m["X"] - here["X"], m["Y"] - here["Y"])) if here else None,
+                            "aim_angle": aim_angle(eye, m["pitch"], m["yaw"], target),
+                            "mate_x": m["X"],
+                            "mate_y": m["Y"],
+                            "mate_yaw": m["yaw"],
+                        }
+                    )
+            alive[victim_team] -= 1
+    return pd.DataFrame(deaths), pd.DataFrame(chances)
 
 
 def parse_demo(path: str | Path, match_id: str | None = None, source: str | None = None) -> ParsedDemo:
@@ -189,7 +321,16 @@ def parse_demo(path: str | Path, match_id: str | None = None, source: str | None
                 "team_a_score": int(final.get("A", 0)),
                 "team_b_score": int(final.get("B", 0)),
                 "demo_file": path.name,
+                "parser_version": PARSER_VERSION,
             }
         ]
     )
-    return ParsedDemo(match=match, rounds=rounds, team_rounds=team_rounds, player_rounds=player_rounds)
+    deaths, trade_chances = parse_fights(parser, rounds, player_rounds, team_rounds)
+    return ParsedDemo(
+        match=match,
+        rounds=rounds,
+        team_rounds=team_rounds,
+        player_rounds=player_rounds,
+        deaths=deaths.assign(match_id=match_id) if len(deaths) else deaths,
+        trade_chances=trade_chances.assign(match_id=match_id) if len(trade_chances) else trade_chances,
+    )

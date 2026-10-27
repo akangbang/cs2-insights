@@ -16,8 +16,11 @@ CREATE TABLE IF NOT EXISTS matches (
     team_a_score   integer NOT NULL,
     team_b_score   integer NOT NULL,
     demo_file      text,
+    parser_version integer NOT NULL DEFAULT 1,
     parsed_at      timestamptz NOT NULL DEFAULT now()
 );
+-- Databases created before parser versions existed.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS parser_version integer NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS rounds (
     match_id         text NOT NULL REFERENCES matches ON DELETE CASCADE,
@@ -64,6 +67,55 @@ CREATE TABLE IF NOT EXISTS player_rounds (
     FOREIGN KEY (match_id, round) REFERENCES rounds ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS player_rounds_steamid ON player_rounds (steamid);
+
+-- Every death during live play, with what's needed to judge it (demo.parse_fights).
+CREATE TABLE IF NOT EXISTS deaths (
+    match_id       text NOT NULL,
+    round          integer NOT NULL,
+    tick           integer NOT NULL,
+    round_seconds  real NOT NULL,
+    victim         text NOT NULL,
+    killer         text,
+    victim_team    text NOT NULL CHECK (victim_team IN ('A', 'B')),
+    killer_team    text CHECK (killer_team IN ('A', 'B')),
+    weapon         text,
+    headshot       boolean NOT NULL,
+    victim_place   text,
+    killer_place   text,
+    victim_equip   integer NOT NULL,
+    victim_blind   boolean NOT NULL,
+    victim_speed   real,
+    victim_x       real,
+    victim_y       real,
+    killer_x       real,
+    killer_y       real,
+    team_alive     integer NOT NULL,
+    enemies_alive  integer NOT NULL,
+    bomb_planted   boolean NOT NULL,
+    traded_by      text,
+    trade_seconds  real,
+    PRIMARY KEY (match_id, tick, victim),
+    FOREIGN KEY (match_id, round) REFERENCES rounds ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS deaths_victim ON deaths (victim);
+
+-- Where each living teammate of the victim stood and aimed at the moment of a death.
+CREATE TABLE IF NOT EXISTS trade_chances (
+    match_id            text NOT NULL,
+    round               integer NOT NULL,
+    tick                integer NOT NULL,
+    victim              text NOT NULL,
+    mate                text NOT NULL,
+    distance_to_killer  real NOT NULL,
+    distance_to_victim  real,
+    aim_angle           real NOT NULL,
+    mate_x              real,
+    mate_y              real,
+    mate_yaw            real,
+    PRIMARY KEY (match_id, tick, victim, mate),
+    FOREIGN KEY (match_id, tick, victim) REFERENCES deaths ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS trade_chances_mate ON trade_chances (mate);
 
 -- Players who linked their Valve match history.
 CREATE TABLE IF NOT EXISTS linked_accounts (

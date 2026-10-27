@@ -7,11 +7,13 @@ import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
-from cs2_insights.demo import ParsedDemo
+from cs2_insights.demo import PARSER_VERSION, ParsedDemo
 
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
 
-MATCH_COLUMNS = ["match_id", "source", "map", "server", "patch_version", "rounds", "team_a_score", "team_b_score", "demo_file"]
+MATCH_COLUMNS = [
+    "match_id", "source", "map", "server", "patch_version", "rounds", "team_a_score", "team_b_score", "demo_file", "parser_version",
+]
 ROUND_COLUMNS = ["match_id", "round", "freeze_end_tick", "end_tick", "winner_side", "reason"]
 TEAM_ROUND_COLUMNS = [
     "match_id", "round", "team", "side", "players", "equip_value", "bank", "start_equip_value",
@@ -20,6 +22,15 @@ TEAM_ROUND_COLUMNS = [
 PLAYER_ROUND_COLUMNS = [
     "match_id", "round", "steamid", "team", "side", "balance", "equip_value", "start_equip_value",
     "cash_spent", "armor", "has_helmet", "has_defuser",
+]
+DEATH_COLUMNS = [
+    "match_id", "round", "tick", "round_seconds", "victim", "killer", "victim_team", "killer_team", "weapon", "headshot",
+    "victim_place", "killer_place", "victim_equip", "victim_blind", "victim_speed", "victim_x", "victim_y", "killer_x",
+    "killer_y", "team_alive", "enemies_alive", "bomb_planted", "traded_by", "trade_seconds",
+]
+TRADE_CHANCE_COLUMNS = [
+    "match_id", "round", "tick", "victim", "mate", "distance_to_killer", "distance_to_victim", "aim_angle",
+    "mate_x", "mate_y", "mate_yaw",
 ]
 
 
@@ -51,6 +62,12 @@ def match_exists(conn: psycopg.Connection, match_id: str) -> bool:
     return conn.execute("SELECT 1 FROM matches WHERE match_id = %s", (match_id,)).fetchone() is not None
 
 
+def match_is_current(conn: psycopg.Connection, match_id: str) -> bool:
+    """Stored, and parsed by the current parser (older matches lack newer tables)."""
+    row = conn.execute("SELECT parser_version FROM matches WHERE match_id = %s", (match_id,)).fetchone()
+    return row is not None and row[0] >= PARSER_VERSION
+
+
 def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
     """Replace one match's rows in a single transaction, so a re-parse never leaves half a match."""
     match_id = parsed.match.iloc[0]["match_id"]
@@ -62,10 +79,15 @@ def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
                ON CONFLICT (steamid) DO UPDATE SET last_name = EXCLUDED.last_name, updated_at = now()""",
             _rows(names, ["steamid", "name"]),
         )
-        _insert(cur, "matches", parsed.match, MATCH_COLUMNS)
+        match = parsed.match if "parser_version" in parsed.match else parsed.match.assign(parser_version=1)
+        _insert(cur, "matches", match, MATCH_COLUMNS)
         _insert(cur, "rounds", parsed.rounds, ROUND_COLUMNS)
         _insert(cur, "team_rounds", parsed.team_rounds, TEAM_ROUND_COLUMNS)
         _insert(cur, "player_rounds", parsed.player_rounds, PLAYER_ROUND_COLUMNS)
+        if len(parsed.deaths):
+            _insert(cur, "deaths", parsed.deaths, DEATH_COLUMNS)
+        if len(parsed.trade_chances):
+            _insert(cur, "trade_chances", parsed.trade_chances, TRADE_CHANCE_COLUMNS)
 
 
 def pool_team_rounds(conn: psycopg.Connection, exclude_match_id: str | None = None) -> pd.DataFrame:
@@ -75,6 +97,21 @@ def pool_team_rounds(conn: psycopg.Connection, exclude_match_id: str | None = No
         (exclude_match_id or "",),
     ).fetchall()
     return pd.DataFrame(rows, columns=["match_id", "round", "team", "players", "equip_value", "buy_type", "won"])
+
+
+def pool_fights(conn: psycopg.Connection, exclude_match_id: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Deaths, trade chances and team-rounds from every stored match (optionally minus one), for fight models."""
+    params = (exclude_match_id or "",)
+
+    def frame(table: str, columns: list[str]) -> pd.DataFrame:
+        rows = conn.execute(f"SELECT {', '.join(columns)} FROM {table} WHERE match_id <> %s", params).fetchall()
+        return pd.DataFrame(rows, columns=columns)
+
+    return (
+        frame("deaths", DEATH_COLUMNS),
+        frame("trade_chances", TRADE_CHANCE_COLUMNS),
+        frame("team_rounds", ["match_id", "round", "team", "side", "won"]),
+    )
 
 
 def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[ParsedDemo]:
@@ -88,6 +125,13 @@ def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[P
     team_rounds = pd.DataFrame(
         conn.execute(f"SELECT {', '.join(TEAM_ROUND_COLUMNS)} FROM team_rounds {where}", params).fetchall(),
         columns=TEAM_ROUND_COLUMNS,
+    )
+    deaths = pd.DataFrame(
+        conn.execute(f"SELECT {', '.join(DEATH_COLUMNS)} FROM deaths {where}", params).fetchall(), columns=DEATH_COLUMNS
+    )
+    chances = pd.DataFrame(
+        conn.execute(f"SELECT {', '.join(TRADE_CHANCE_COLUMNS)} FROM trade_chances {where}", params).fetchall(),
+        columns=TRADE_CHANCE_COLUMNS,
     )
     player_cols = PLAYER_ROUND_COLUMNS + ["name"]
     player_rounds = pd.DataFrame(
@@ -104,6 +148,8 @@ def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[P
             rounds=pd.DataFrame(),
             team_rounds=team_rounds[team_rounds["match_id"] == match_id].sort_values(["round", "team"]).reset_index(drop=True),
             player_rounds=player_rounds[player_rounds["match_id"] == match_id].sort_values(["round", "team"]).reset_index(drop=True),
+            deaths=deaths[deaths["match_id"] == match_id].sort_values("tick").reset_index(drop=True),
+            trade_chances=chances[chances["match_id"] == match_id].reset_index(drop=True),
         )
         for match_id in matches["match_id"]
     ]
