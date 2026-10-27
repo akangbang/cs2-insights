@@ -18,11 +18,9 @@ def test_report_renders_for_newest_replay_and_switches_player():
     app = picker.set_value(picker.options[0]).run()
     assert not app.exception
     assert app.header[0].value.split(" · ")[1].startswith(("Win", "Loss", "Draw"))
-    assert [m.label for m in app.metric] == [
-        "Rounds won", "Expected from your buys", "Buy calls right", "Rounds lost to buy calls",
-        "Deaths traded", "Avoidable deaths", "Rounds lost to avoidable deaths", "Coverage grade",
-    ]
-    assert 3 <= len(app.dataframe) <= 6  # deaths, coverage and buy-call tables only show when there's something in them
+    assert [m.label for m in app.metric][:4] == ["Rounds won", "Avoidable deaths", "Coverage", "Buy calls right"]
+    assert [t.label for t in app.tabs] == ["💀 Your deaths", "🤝 Covering teammates", "💰 Buy calls", "📈 Economy"]
+    assert "Coverage grade" in [m.label for m in app.metric]
 
     first = app.header[0].value
     players = app.selectbox[0]

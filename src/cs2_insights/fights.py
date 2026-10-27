@@ -169,7 +169,9 @@ def judge_deaths(deaths: pd.DataFrame, chances: pd.DataFrame, team_rounds: pd.Da
     recent = d[["round", "tick", "victim", "victim_place"]].merge(kills, on=["round", "victim"])
     recent = recent[(recent["kill_tick"] < recent["tick"]) & (recent["kill_tick"] >= recent["tick"] - REPEEK_SECONDS * 64)
                     & (recent["killer_place"] == recent["victim_place"])]
-    d["repeek"] = d.set_index(["tick", "victim"]).index.isin(recent.set_index(["tick", "victim"]).index)
+    gaps = ((recent["tick"] - recent["kill_tick"]) / 64).groupby([recent["tick"], recent["victim"]]).min().rename("repeek_gap")
+    d = d.merge(gaps, left_on=["tick", "victim"], right_index=True, how="left")
+    d["repeek"] = d["repeek_gap"].notna()
     d["moving"] = d["victim_speed"].fillna(0) >= MOVING_SPEED
     d["opening"] = d["tick"] == d.groupby("round")["tick"].transform("min")
     d["lost_cause"] = (d["win_before"] < LOST_CAUSE) & (d["victim_equip"] >= GEAR_WORTH_SAVING) & ~d["won"].astype(bool)

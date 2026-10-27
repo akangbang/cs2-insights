@@ -28,7 +28,7 @@ UPSET_MIN_SAMPLE = 20
 COSTLY_CALL = 0.25
 COSTLY_DEATH = 0.10
 MOMENTS_BAD = 3
-MOMENTS_MAX = 6
+MOMENTS_MAX = 4
 
 BUY_LABELS = {"pistol": "Pistol", "eco": "Eco", "force": "Force", "full": "Full buy"}
 
@@ -50,7 +50,9 @@ class Report:
     calls: pd.DataFrame = field(default_factory=pd.DataFrame)  # grade.grade_decisions() for your team
     deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.judge_deaths() rows where you died
     coverage: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.coverage(): teammate deaths near you
+    trade_chances: pd.DataFrame = field(default_factory=pd.DataFrame)  # where everyone stood at each death
     names: dict = field(default_factory=dict)  # steamid -> name, everyone in the match
+    fight_model: FightModel = field(default_factory=FightModel)  # the models the fight numbers came from
     moments: list[Moment] = field(default_factory=list)
 
 
@@ -172,7 +174,9 @@ def build_report(
         calls=calls,
         deaths=my_deaths,
         coverage=cover,
+        trade_chances=parsed.trade_chances,
         names=names,
+        fight_model=model,
         moments=_moments(rounds, calls, my_deaths, cover, names),
     )
 
@@ -240,6 +244,105 @@ def clock(seconds) -> str:
     """Time since the round went live, as m:ss."""
     seconds = int(seconds or 0)
     return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+# What each verdict means in one line, and what to do next time.
+DEATH_GROUPS = {
+    fights.TRADED: "Traded",
+    fights.REPEEK: "Avoidable",
+    fights.SHOULD_SAVE: "Avoidable",
+    fights.ALONE: "Avoidable",
+    fights.NOT_TRADED: "Teammates didn't trade",
+    fights.DUEL: "Lost a duel",
+    fights.OTHER: "Other",
+}
+DEATH_FIXES = {
+    fights.REPEEK: "After a kill, move: fall back or swing a different angle. The enemy now knows exactly where you are.",
+    fights.ALONE: "Wait a second until a teammate is close enough to trade (under 900 units) before you clear the next angle.",
+    fights.SHOULD_SAVE: "When the round is this lopsided, hide and keep the gun: it's money you start the next round with.",
+    fights.NOT_TRADED: "Not on you. Call where you're fighting so teammates know to swing with you.",
+}
+
+
+def death_reasons(death: pd.Series, chances: pd.DataFrame, names: dict) -> list[str]:
+    """The facts behind a death's verdict, each a short sentence with the numbers from the demo."""
+    label = death["label"]
+    reasons = []
+    if label == fights.TRADED:
+        reasons.append(f"{names.get(death['traded_by'], 'A teammate')} killed your killer {death['trade_seconds']:.1f}s later.")
+        if death["moving"]:
+            reasons.append("You were moving into the fight: an entry or angle clear that got traded is doing the job.")
+        return reasons
+    if label == fights.REPEEK:
+        reasons.append(f"You got a kill from {place_label(death['victim_place'])} {death['repeek_gap']:.1f}s earlier.")
+        reasons.append("You peeked the same spot again instead of moving, and the next enemy was ready for it.")
+    elif label == fights.SHOULD_SAVE:
+        planted = " with the bomb planted" if death["bomb_planted"] else ""
+        reasons.append(f"It was {int(death['team_alive'])} vs {int(death['enemies_alive'])}{planted}: "
+                       f"your team had a {death['win_before']:.0%} chance to win the round.")
+        reasons.append(f"You were holding ${int(death['victim_equip']):,} of gear, lost with the fight.")
+    elif label == fights.ALONE:
+        reasons.append(f"You were moving at {death['victim_speed']:.0f} units/s: pushing or clearing an angle.")
+        if pd.notna(death["closest_mate"]):
+            reasons.append(f"Your nearest teammate was {death['closest_mate']:,.0f} units from your killer. "
+                           f"Trades almost only happen within {fights.TRADE_RANGE:,}.")
+        else:
+            reasons.append("No teammate was anywhere near the fight.")
+    mates = chances[(chances["tick"] == death["tick"]) & (chances["victim"] == death["victim"])] if len(chances) else chances
+    if label in (fights.NOT_TRADED, fights.DUEL, fights.REPEEK) and len(mates):
+        for mate in mates[mates["distance_to_killer"] <= fights.TRADE_RANGE].sort_values("distance_to_killer").itertuples():
+            reasons.append(f"{names.get(mate.mate, 'A teammate')} was {mate.distance_to_killer:,.0f} units from your killer, "
+                           f"aiming {mate.aim_angle:.0f}° away from him, and didn't trade.")
+        if label == fights.DUEL and not (mates["distance_to_killer"] <= fights.TRADE_RANGE).any():
+            if death["moving"]:
+                reasons.append("You were moving into the fight and lost it; no teammate was close enough to trade.")
+            elif death["side"] == "CT":
+                reasons.append("You were holding an angle alone, which is normal on CT; nobody could have traded.")
+            else:
+                reasons.append("You were holding an angle with no teammate close enough to trade.")
+    if death["victim_blind"]:
+        reasons.append("You were flashed when you died.")
+    return reasons
+
+
+def pct(value: float) -> str:
+    return "under 1%" if value < 0.005 else f"{value:.0%}"
+
+
+def cover_reasons(row: pd.Series, names: dict) -> list[str]:
+    """Where you stood and aimed when a teammate near you died, and what came of it."""
+    distance, angle = row["distance_to_killer"], row["aim_angle"]
+    near = "close enough to trade" if distance <= fights.TRADE_RANGE else f"too far: trades almost only happen within {fights.TRADE_RANGE:,}"
+    aim = "on him" if angle <= 10 else "close to him" if angle <= fights.FACING_ANGLE else "looking somewhere else"
+    reasons = [
+        f"You were {distance:,.0f} units from the killer ({near}).",
+        f"Your crosshair was {angle:.0f}° off the killer ({aim}).",
+        f"From that spot and aim, players trade {pct(row['chance'])} of the time.",
+    ]
+    if row["verdict"] == fights.COVER_TRADED:
+        reasons.append(f"You traded in {row['trade_seconds']:.1f}s.")
+    elif row["verdict"] == fights.COVER_OTHER_TRADED:
+        reasons.append(f"{names.get(row['traded_by'], 'A teammate')} traded in {row['trade_seconds']:.1f}s.")
+    elif row["verdict"] == fights.COVER_FACING_AWAY:
+        reasons.append(f"Facing the fight from where you stood would have made it {row['chance_if_facing']:.0%}.")
+    return reasons
+
+
+def match_story(report: "Report") -> str:
+    """Two sentences: how the match went and the one thing to take from it."""
+    s = report.summary
+    over = s["your_score"] - s["expected_wins"]
+    text = (f"**{s['result']} {s['your_score']}–{s['their_score']}** on {(s['map'] or '').removeprefix('de_').title()}, "
+            f"{abs(over):.1f} rounds {'more' if over >= 0 else 'fewer'} than your team's buys usually win.")
+    bad = [m for m in report.moments if m.kind == "bad"]
+    good = [m for m in report.moments if m.kind == "good"]
+    if bad:
+        text += f" Biggest thing to fix: **{bad[0].title.split(': ', 1)[-1]}** (round {bad[0].round})."
+    if s.get("coverage", {}).get("grade") in ("A", "B"):
+        text += f" You covered your teammates well (grade {s['coverage']['grade']})."
+    elif good:
+        text += f" Best moment: **{good[0].title.split(': ', 1)[-1]}** (round {good[0].round})."
+    return text
 
 
 def death_detail(death: pd.Series, names: dict) -> str:
