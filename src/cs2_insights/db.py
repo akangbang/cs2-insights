@@ -66,3 +66,12 @@ def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
         _insert(cur, "rounds", parsed.rounds, ROUND_COLUMNS)
         _insert(cur, "team_rounds", parsed.team_rounds, TEAM_ROUND_COLUMNS)
         _insert(cur, "player_rounds", parsed.player_rounds, PLAYER_ROUND_COLUMNS)
+
+
+def pool_team_rounds(conn: psycopg.Connection, exclude_match_id: str | None = None) -> pd.DataFrame:
+    """Every team-round in the database (optionally minus one match), for pooled win rates."""
+    rows = conn.execute(
+        "SELECT match_id, round, team, buy_type, won FROM team_rounds WHERE match_id <> %s",
+        (exclude_match_id or "",),
+    ).fetchall()
+    return pd.DataFrame(rows, columns=["match_id", "round", "team", "buy_type", "won"])

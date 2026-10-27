@@ -8,9 +8,9 @@ import pandas as pd
 from demoparser2 import DemoParser
 
 SIDES = {2: "T", 3: "CT"}
-# Team equipment value after buying (proposal cut-offs, to tune on data).
-ECO_MAX = 5_000
-FORCE_MAX = 20_000
+# Average equipment value per player after buying. Full buy = rifle + armor + some utility.
+ECO_MAX_PER_PLAYER = 1_600
+FULL_MIN_PER_PLAYER = 3_800
 PLAYER_PROPS = [
     "team_num",
     "balance",
@@ -40,12 +40,13 @@ def match_id_from_path(path: Path) -> str:
     return str(int(found.group(1))) if found else path.stem
 
 
-def buy_type(round_number: int, first_round_of_half: set[int], equip_value: float) -> str:
+def buy_type(round_number: int, first_round_of_half: set[int], equip_value: float, players: int = 5) -> str:
     if round_number in first_round_of_half and round_number <= REGULATION_ROUNDS:
         return "pistol"
-    if equip_value < ECO_MAX:
+    per_player = equip_value / max(players, 1)
+    if per_player < ECO_MAX_PER_PLAYER:
         return "eco"
-    if equip_value <= FORCE_MAX:
+    if per_player < FULL_MIN_PER_PLAYER:
         return "force"
     return "full"
 
@@ -169,7 +170,8 @@ def parse_demo(path: str | Path, match_id: str | None = None, source: str | None
         score_before.at[r, "B" if t == "A" else "A"] for r, t in zip(team_rounds["round"], team_rounds["team"])
     ]
     team_rounds["buy_type"] = [
-        buy_type(r, first_of_half, v) for r, v in zip(team_rounds["round"], team_rounds["equip_value"])
+        buy_type(r, first_of_half, v, n)
+        for r, v, n in zip(team_rounds["round"], team_rounds["equip_value"], team_rounds["players"])
     ]
     team_rounds.insert(0, "match_id", match_id)
     team_rounds = team_rounds.drop(columns="winner_side")

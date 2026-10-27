@@ -27,10 +27,16 @@ def test_match_id_falls_back_to_file_name():
 
 @pytest.mark.parametrize(
     "round_number, equip, expected",
-    [(1, 4_000, "pistol"), (13, 4_000, "pistol"), (2, 4_999, "eco"), (2, 5_000, "force"), (2, 20_000, "force"), (2, 20_001, "full")],
+    [(1, 4_000, "pistol"), (13, 4_000, "pistol"), (2, 7_999, "eco"), (2, 8_000, "force"), (2, 18_999, "force"), (2, 19_000, "full")],
 )
 def test_buy_type(round_number, equip, expected):
     assert buy_type(round_number, {1, 13}, equip) == expected
+
+
+def test_buy_type_is_per_player():
+    # $15,000 is a force for five players but a full buy for four.
+    assert buy_type(5, {1, 13}, 15_000, players=5) == "force"
+    assert buy_type(5, {1, 13}, 15_200, players=4) == "full"
 
 
 def test_overtime_halves_are_not_pistols():
