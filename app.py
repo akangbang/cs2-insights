@@ -3,7 +3,9 @@
 Run with: streamlit run app.py
 """
 
+import dataclasses
 import hashlib
+import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +41,8 @@ from cs2_insights.report import (
 
 ROOT = Path(__file__).resolve().parent
 REPLAYS = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays")
+# Screenshot mode for the README: show stand-in names instead of real players' Steam names.
+HIDE_NAMES = os.getenv("HALFTIME_HIDE_NAMES") == "1"
 WATCH_LEAD_SECONDS = 5  # "watch" jumps to a few seconds before the moment
 DISCLAIMER = (
     "Halftime is not affiliated with or endorsed by Valve Corporation. "
@@ -115,6 +119,14 @@ def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
     except Exception:
         conn.rollback()
         return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
+
+
+def hide_names(parsed: ParsedDemo) -> ParsedDemo:
+    """In screenshot mode, replace each player's name with a stand-in that stays the same across matches."""
+    if not HIDE_NAMES:
+        return parsed
+    stand_in = parsed.player_rounds["steamid"].map(lambda sid: f"Player {int(hashlib.sha1(sid.encode()).hexdigest(), 16) % 900 + 100}")
+    return dataclasses.replace(parsed, player_rounds=parsed.player_rounds.assign(name=stand_in))
 
 
 def replay_demos(folder: Path) -> list[Path]:
@@ -641,6 +653,7 @@ def report_page() -> None:
             return
 
     pool, slope, fight_model = save_and_pool(parsed)
+    parsed = hide_names(parsed)
     if database() is None:
         st.warning(
             "The match database isn't running, so win rates come from this match only. "
@@ -683,7 +696,7 @@ def habits_page() -> None:
         st.sidebar.success(f"Added {added} new match{'es' if added != 1 else ''}.")
 
     try:
-        matches = db.load_matches(conn)
+        matches = [hide_names(m) for m in db.load_matches(conn)]
         conn.commit()
     except Exception:
         conn.rollback()
@@ -772,9 +785,9 @@ def render_habit_scorecards(habits) -> None:
     with cards[0].container(border=True):
         if habits.fight_matches:
             avoidable = deaths[deaths["label"].isin(fights.AVOIDABLE)]
-            st.metric("Avoidable deaths per match", f"{len(avoidable) / habits.fight_matches:.1f}")
+            st.metric("Avoidable deaths", f"{len(avoidable) / habits.fight_matches:.1f}")
             kinds = avoidable["label"].value_counts()
-            st.caption(" · ".join(f"{n} {SHORT_LABELS[label]}" for label, n in kinds.items()) or "None. Clean fights.")
+            st.caption("per match. " + (" · ".join(f"{n} {SHORT_LABELS[label]}" for label, n in kinds.items()) or "None. Clean fights."))
         else:
             st.metric("Avoidable deaths", "–")
     with cards[1].container(border=True):
