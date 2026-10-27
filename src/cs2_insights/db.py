@@ -71,7 +71,39 @@ def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
 def pool_team_rounds(conn: psycopg.Connection, exclude_match_id: str | None = None) -> pd.DataFrame:
     """Every team-round in the database (optionally minus one match), for pooled win rates."""
     rows = conn.execute(
-        "SELECT match_id, round, team, buy_type, won FROM team_rounds WHERE match_id <> %s",
+        "SELECT match_id, round, team, players, equip_value, buy_type, won FROM team_rounds WHERE match_id <> %s",
         (exclude_match_id or "",),
     ).fetchall()
-    return pd.DataFrame(rows, columns=["match_id", "round", "team", "buy_type", "won"])
+    return pd.DataFrame(rows, columns=["match_id", "round", "team", "players", "equip_value", "buy_type", "won"])
+
+
+def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[ParsedDemo]:
+    """Stored matches rebuilt as ParsedDemo objects, optionally only those `steamid` played in."""
+    where, params = ("WHERE match_id IN (SELECT match_id FROM player_rounds WHERE steamid = %s)", (steamid,)) if steamid else ("", ())
+    match_cols = ["match_id", "source", "map", "rounds", "team_a_score", "team_b_score", "demo_file"]
+    matches = pd.DataFrame(
+        conn.execute(f"SELECT {', '.join(match_cols)} FROM matches {where} ORDER BY match_id", params).fetchall(),
+        columns=match_cols,
+    )
+    team_rounds = pd.DataFrame(
+        conn.execute(f"SELECT {', '.join(TEAM_ROUND_COLUMNS)} FROM team_rounds {where}", params).fetchall(),
+        columns=TEAM_ROUND_COLUMNS,
+    )
+    player_cols = PLAYER_ROUND_COLUMNS + ["name"]
+    player_rounds = pd.DataFrame(
+        conn.execute(
+            f"""SELECT {', '.join('pr.' + c for c in PLAYER_ROUND_COLUMNS)}, p.last_name
+                FROM player_rounds pr JOIN players p USING (steamid) {where.replace('match_id IN', 'pr.match_id IN')}""",
+            params,
+        ).fetchall(),
+        columns=player_cols,
+    )
+    return [
+        ParsedDemo(
+            match=matches[matches["match_id"] == match_id].reset_index(drop=True),
+            rounds=pd.DataFrame(),
+            team_rounds=team_rounds[team_rounds["match_id"] == match_id].sort_values(["round", "team"]).reset_index(drop=True),
+            player_rounds=player_rounds[player_rounds["match_id"] == match_id].sort_values(["round", "team"]).reset_index(drop=True),
+        )
+        for match_id in matches["match_id"]
+    ]

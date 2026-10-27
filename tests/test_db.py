@@ -72,3 +72,14 @@ def test_failed_load_leaves_nothing_behind(clean_conn):
         db.load_parsed(clean_conn, bad)
     clean_conn.rollback()
     assert not db.match_exists(clean_conn, MATCH_ID)
+
+
+def test_load_matches_rebuilds_stored_matches(clean_conn):
+    db.load_parsed(clean_conn, _fake_demo())
+    matches = db.load_matches(clean_conn, steamid="pytest_1")
+    clean_conn.commit()
+    assert len(matches) == 1
+    parsed = matches[0]
+    assert parsed.match.iloc[0]["map"] == "de_test"
+    assert len(parsed.team_rounds) == 2
+    assert set(parsed.player_rounds["name"]) == {"one", "two"}

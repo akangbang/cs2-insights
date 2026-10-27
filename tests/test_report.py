@@ -16,6 +16,7 @@ def _match(rounds):
             team_rounds.append({
                 "match_id": "m", "round": number, "team": team, "side": "CT" if team == "A" else "T",
                 "players": 5, "equip_value": equip, "bank": 1_000, "won": team_won,
+                "start_equip_value": 1_000, "cash_spent": max(equip - 1_000, 0),
                 "score": score[team], "opponent_score": score["B" if team == "A" else "A"], "buy_type": buy,
             })
         for i, equip in enumerate(equips):
@@ -90,11 +91,28 @@ def test_report_flags_force_trap_upset_and_split_buy():
     ]
     assert report.rounds["split_buy"].tolist() == [False, False, True, False]
     titles = [m.title for m in report.moments]
-    assert titles[0] == "Round 1: the force that cost two rounds"
     assert "1 split buy" in titles
     assert "Round 3: best upset" in titles
-    assert "Round 4: the one that got away" in titles
     assert report.players.loc[report.players["steamid"] == ME, "split_buys"].iat[0] == 1
+
+    # Every graded decision shows up in the round table too.
+    assert report.summary["calls"] == len(report.calls)
+    assert set(report.rounds["call"]) <= {"", "Good call", "Close call", "Should have saved", "Should have forced"}
+
+
+def test_report_grades_buy_calls_and_explains_them():
+    # Round 2 is the match's last round: $3,200 each, and the team saves money it can never use.
+    parsed = _match([
+        ("pistol", 4_000, "pistol", 4_000, False, [800] * 5),
+        ("eco", 4_000, "full", 22_000, False, [800] * 5),
+    ])
+    parsed.team_rounds.loc[parsed.team_rounds["round"] == 2, "bank"] = 12_000
+    report = build_report(parsed, ME, POOL)
+    assert report.summary["calls"] == 1 and report.summary["calls_wrong"] == 1
+    assert report.rounds.set_index("round").at[2, "call"] == "Should have forced"
+    moment = report.moments[0]
+    assert moment.title == "Round 2: should have forced"
+    assert "Money resets" in moment.detail
 
 
 def test_players_in_and_unknown_player():

@@ -1,8 +1,8 @@
 """Turn a parsed match into a player's economy report.
 
 Each round's buy is compared with how often that buy-versus-buy matchup wins across every
-match in the pool, so a player sees which rounds they won against the odds and which
-decisions set their team back.
+match in the pool, and every force-or-save decision is graded by simulating both choices
+(see grade.py), so a player sees which calls cost their team rounds.
 """
 
 from dataclasses import dataclass, field
@@ -10,15 +10,18 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from cs2_insights.demo import ParsedDemo
+from cs2_insights.grade import CLOSE, FORCE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
+from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, expected_win_rate, pooled_rates  # noqa: F401  (re-exported)
 
-# Pooled win rates are shrunk toward the buy type's overall rate by this many rounds,
-# so a matchup seen only a few times doesn't swing to 0% or 100%.
-SMOOTHING_ROUNDS = 10
 UPSET_BELOW = 0.40
 FAVOURED_ABOVE = 0.60
 # A split buy: at least one player bought a rifle-level loadout while two or more saved.
 SPLIT_BUYER_MIN = 3_500
 SPLIT_SAVER_MAX = 1_500
+# Upset moments need this many pooled rounds behind the matchup, or they're mostly noise.
+UPSET_MIN_SAMPLE = 20
+# A wrong call is only worth a moment when it cost at least this many expected rounds.
+COSTLY_CALL = 0.25
 
 BUY_LABELS = {"pistol": "Pistol", "eco": "Eco", "force": "Force", "full": "Full buy"}
 
@@ -37,39 +40,8 @@ class Report:
     rounds: pd.DataFrame
     buy_summary: pd.DataFrame
     players: pd.DataFrame
+    calls: pd.DataFrame = field(default_factory=pd.DataFrame)  # grade.grade_decisions() for your team
     moments: list[Moment] = field(default_factory=list)
-
-
-def pooled_rates(team_rounds: pd.DataFrame) -> pd.DataFrame:
-    """Win counts per (buy_type, opponent_buy_type) from team-round rows of many matches."""
-    opponents = team_rounds[["match_id", "round", "team", "buy_type"]].rename(
-        columns={"team": "opp_team", "buy_type": "opponent_buy_type"}
-    )
-    paired = team_rounds.merge(opponents, on=["match_id", "round"])
-    paired = paired[paired["team"] != paired["opp_team"]]
-    return (
-        paired.groupby(["buy_type", "opponent_buy_type"])
-        .agg(rounds=("won", "size"), wins=("won", "sum"))
-        .reset_index()
-    )
-
-
-def expected_win_rate(pool: pd.DataFrame, buy: str, opponent_buy: str) -> tuple[float, int]:
-    """Smoothed pooled win rate for a matchup, and how many rounds it's based on.
-
-    The prior averages "how often this buy wins" with "how often the opponent's buy loses",
-    so a matchup and its mirror always sum to 1 and both teams' expected wins add up to the
-    rounds played.
-    """
-
-    def overall(buy_type: str) -> float:
-        rows = pool[pool["buy_type"] == buy_type]
-        return rows["wins"].sum() / rows["rounds"].sum() if rows["rounds"].sum() else 0.5
-
-    prior = (overall(buy) + 1 - overall(opponent_buy)) / 2
-    match = pool[(pool["buy_type"] == buy) & (pool["opponent_buy_type"] == opponent_buy)]
-    wins, rounds = (int(match["wins"].iat[0]), int(match["rounds"].iat[0])) if not match.empty else (0, 0)
-    return (wins + SMOOTHING_ROUNDS * prior) / (rounds + SMOOTHING_ROUNDS), rounds
 
 
 def players_in(parsed: ParsedDemo) -> pd.DataFrame:
@@ -90,8 +62,11 @@ def _verdict(won: bool, expected: float) -> str:
     return "Expected win" if won else "Expected loss"
 
 
-def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report:
-    """Economy report for the team `steamid` played on. `pool` comes from pooled_rates()."""
+def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame, slope: float = DEFAULT_EQUIPMENT_SLOPE) -> Report:
+    """Economy report for the team `steamid` played on.
+
+    `pool` comes from pooled_rates(); `slope` from rates.equipment_slope() on the same pool.
+    """
     me = parsed.player_rounds[parsed.player_rounds["steamid"] == steamid]
     if me.empty:
         raise ValueError("That player isn't in this match.")
@@ -99,7 +74,7 @@ def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report
     their_team = "B" if my_team == "A" else "A"
 
     teams = parsed.team_rounds.set_index(["round", "team"])
-    split = _split_buy_rounds(parsed.player_rounds, my_team)
+    split = split_buy_rounds(parsed.player_rounds, my_team)
     rows = []
     for number in sorted(parsed.team_rounds["round"].unique()):
         mine, theirs = teams.loc[(number, my_team)], teams.loc[(number, their_team)]
@@ -122,6 +97,10 @@ def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report
         )
     rounds = pd.DataFrame(rows)
     rounds["verdict"] = [_verdict(w, e) for w, e in zip(rounds["won"], rounds["expected"])]
+    calls = grade_decisions(parsed.team_rounds, my_team, slope)
+    rounds = rounds.merge(calls[["round", "grade", "cost"]].rename(columns={"grade": "call", "cost": "call_cost"}), on="round", how="left")
+    rounds["call"] = rounds["call"].fillna("")
+    rounds["call_cost"] = rounds["call_cost"].fillna(0.0)
 
     buy_summary = (
         rounds.groupby("your_buy")
@@ -147,6 +126,11 @@ def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report
         "favoured_lost": int((rounds["verdict"] == UPSET_LOSS).sum()),
         "expected_wins": round(float(rounds["expected"].sum()), 1),
         "pool_rounds": int(pool["rounds"].sum()) // 2,
+        "calls": len(calls),
+        "calls_right": int((calls["grade"] == GOOD_CALL).sum()),
+        "calls_close": int((calls["grade"] == CLOSE).sum()),
+        "calls_wrong": int(calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE]).sum()),
+        "rounds_lost_to_calls": round(float(calls["cost"].sum()), 1),
     }
 
     return Report(
@@ -154,11 +138,12 @@ def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame) -> Report
         rounds=rounds,
         buy_summary=buy_summary,
         players=_player_table(parsed.player_rounds, my_team, split),
-        moments=_moments(rounds),
+        calls=calls,
+        moments=_moments(rounds, calls),
     )
 
 
-def _split_buy_rounds(player_rounds: pd.DataFrame, team: str) -> set[int]:
+def split_buy_rounds(player_rounds: pd.DataFrame, team: str) -> set[int]:
     mine = player_rounds[player_rounds["team"] == team]
     split = set()
     for number, group in mine.groupby("round"):
@@ -187,26 +172,46 @@ def _player_table(player_rounds: pd.DataFrame, team: str, split: set[int]) -> pd
     return table.reset_index(drop=True)
 
 
-def _moments(rounds: pd.DataFrame) -> list[Moment]:
+def call_detail(call: pd.Series) -> str:
+    """One decision explained: what you did, what the other choice wins, and why."""
+    label = BUY_LABELS.get
+    did = "forced" if call["made"] == FORCE else "saved"
+    span = f"round {call['round']}" if call["rounds_counted"] == 1 else f"rounds {call['round']}–{call['round'] + call['rounds_counted'] - 1}"
+    text = (
+        f"You {did} with ${call['money_each']:,} each against their {label(call['their_buy']).lower()}. "
+        f"Over {span}, forcing wins about {call['force_wins']:.1f} rounds and saving about {call['save_wins']:.1f}. "
+    )
+    if call["rounds_counted"] == 1:
+        return text + "Money resets after this round, so anything you save is wasted."
+    if call["grade"] == SHOULD_FORCE or (call["grade"] == GOOD_CALL and call["made"] == FORCE):
+        return text + (
+            f"A force wins this round {call['force_now']:.0%} of the time against their buy, an eco only "
+            f"{call['save_now']:.0%}, and a win leaves them short of money next round."
+        )
+    return text + (
+        f"Forcing wins this round only {call['force_now']:.0%} of the time and leaves you broke; "
+        "saving sets up a full buy next round."
+    )
+
+
+def _moments(rounds: pd.DataFrame, calls: pd.DataFrame) -> list[Moment]:
     """The few rounds worth talking about, most important first."""
     moments = []
-    by_round = rounds.set_index("round")
     label = BUY_LABELS.get
 
-    # A lost force that left the team on an eco next round: the classic economy trap.
-    for number, row in by_round.iterrows():
-        nxt = by_round.loc[number + 1] if number + 1 in by_round.index else None
-        if row["your_buy"] == "force" and not row["won"] and nxt is not None and nxt["your_buy"] == "eco":
-            moments.append(
-                Moment(
-                    int(number),
-                    "bad",
-                    f"Round {number}: the force that cost two rounds",
-                    f"You forced against their {label(row['their_buy']).lower()} "
-                    f"(a matchup that wins {row['expected']:.0%} of the time), lost, "
-                    f"and had to eco round {number + 1}.",
-                )
-            )
+    # Wrong buy calls first: these are the decisions a team can actually change.
+    wrong = calls[calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE]) & (calls["cost"] >= COSTLY_CALL)]
+    for call in wrong.sort_values("cost", ascending=False).head(2).itertuples(index=False):
+        call = pd.Series(call._asdict())
+        moments.append(
+            Moment(int(call["round"]), "bad", f"Round {call['round']}: {call['grade'].lower()}", call_detail(call)
+                   + f" Cost: about {call['cost']:.1f} rounds.")
+        )
+    good = calls[calls["grade"] == GOOD_CALL]
+    if len(good):
+        edge = (good["force_wins"] - good["save_wins"]).abs()
+        call = good.loc[edge.idxmax()]
+        moments.append(Moment(int(call["round"]), "good", f"Round {call['round']}: right call to {call['made']}", call_detail(call)))
 
     split_rounds = rounds[rounds["split_buy"]]
     if len(split_rounds):
@@ -218,11 +223,13 @@ def _moments(rounds: pd.DataFrame) -> list[Moment]:
                 f"{len(split_rounds)} split buy{'s' if len(split_rounds) > 1 else ''}",
                 f"Some of your team bought while others saved in round"
                 f"{'s' if len(split_rounds) > 1 else ''} {', '.join(map(str, split_rounds['round']))}. "
-                f"You won {split_rounds['won'].sum()} of {len(split_rounds)}.",
+                f"You won {split_rounds['won'].sum()} of {len(split_rounds)}."
+                + (" Buy together or save together: a half-bought team loses the round and the money." if len(lost) else ""),
             )
         )
 
-    upsets = rounds[rounds["verdict"] == UPSET_WIN].sort_values("expected")
+    reliable = rounds[rounds["sample"] >= UPSET_MIN_SAMPLE]
+    upsets = reliable[reliable["verdict"] == UPSET_WIN].sort_values("expected")
     if len(upsets):
         best = upsets.iloc[0]
         moments.append(
@@ -232,19 +239,6 @@ def _moments(rounds: pd.DataFrame) -> list[Moment]:
                 f"Round {best['round']}: best upset",
                 f"Your {label(best['your_buy']).lower()} beat their {label(best['their_buy']).lower()}, "
                 f"a matchup that wins only {best['expected']:.0%} of the time.",
-            )
-        )
-
-    thrown = rounds[rounds["verdict"] == UPSET_LOSS].sort_values("expected", ascending=False)
-    if len(thrown):
-        worst = thrown.iloc[0]
-        moments.append(
-            Moment(
-                int(worst["round"]),
-                "bad",
-                f"Round {worst['round']}: the one that got away",
-                f"Your {label(worst['your_buy']).lower()} lost to their {label(worst['their_buy']).lower()}, "
-                f"a matchup that wins {worst['expected']:.0%} of the time.",
             )
         )
     return moments

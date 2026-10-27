@@ -14,7 +14,10 @@ import streamlit as st
 
 from cs2_insights import db
 from cs2_insights.demo import ParsedDemo, parse_demo
-from cs2_insights.ingest import DEMO_SUFFIXES, plain_demo
+from cs2_insights.grade import CLOSE, GOOD_CALL
+from cs2_insights.habits import MIN_MATCHES, build_habits
+from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
+from cs2_insights.rates import equipment_slope
 from cs2_insights.report import BUY_LABELS, Report, build_report, players_in, pooled_rates
 
 ROOT = Path(__file__).resolve().parent
@@ -70,19 +73,39 @@ def parse_upload(upload) -> ParsedDemo:
         return parse_cached(str(path), digest)
 
 
-def save_and_pool(parsed: ParsedDemo) -> pd.DataFrame:
-    """Store the match (so it joins the pool) and return pooled win rates from every other match."""
+def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float]:
+    """Store the match (so it joins the pool); return pooled win rates and the equipment slope
+    from every other match."""
     conn = database()
     if conn is None:
-        return pooled_rates(parsed.team_rounds)
+        return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds)
     try:
         db.load_parsed(conn, parsed)
         pool = db.pool_team_rounds(conn, exclude_match_id=parsed.match.iloc[0]["match_id"])
         conn.commit()  # end the read transaction so this long-lived connection never holds locks
-        return pooled_rates(pool)
+        return pooled_rates(pool), equipment_slope(pool)
     except Exception:
         conn.rollback()
-        return pooled_rates(parsed.team_rounds)
+        return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds)
+
+
+def replay_demos(folder: Path) -> list[Path]:
+    return sorted(folder.glob("*.dem"), key=lambda p: p.stat().st_mtime, reverse=True) if folder.is_dir() else []
+
+
+def add_all_replays(demos: list[Path]) -> int:
+    """Load every replay that isn't stored yet, so habits and win rates use all of them."""
+    conn = database()
+    added = 0
+    progress = st.progress(0.0, text="Adding replays…")
+    for i, path in enumerate(demos, start=1):
+        try:
+            added += ingest(path, conn).startswith("loaded")
+        except Exception:
+            conn.rollback()
+        progress.progress(i / len(demos), text=f"Adding replays… {i}/{len(demos)}")
+    progress.empty()
+    return added
 
 
 # ---------- report rendering ----------
@@ -149,11 +172,19 @@ def render_report(report: Report) -> None:
     cols = st.columns(4)
     cols[0].metric("Rounds won", s["your_score"], f"{over:+.1f} vs expected", delta_color="normal")
     cols[1].metric("Expected from your buys", s["expected_wins"])
-    cols[2].metric("Upset wins", s["upsets_won"], help="Rounds you won with a buy matchup that usually loses.")
-    cols[3].metric("Upset losses", s["favoured_lost"], help="Rounds you lost with a buy matchup that usually wins.")
+    cols[2].metric(
+        "Buy calls right", f"{s['calls_right']}/{s['calls']}",
+        help="Rounds where your team could force or save, and Halftime's simulation agrees with what you did. "
+        "Close calls count as neither right nor wrong.",
+    )
+    cols[3].metric(
+        "Rounds lost to buy calls", s["rounds_lost_to_calls"],
+        help="Expected rounds the wrong force-or-save calls cost, compared with the other choice.",
+    )
     st.caption(
         f"Expected wins add up how often each of your buy matchups wins across {s['pool_rounds']:,} rounds "
-        "in Halftime's match pool. Early beta: the pool is still small, so treat these as rough."
+        "in Halftime's match pool. Buy calls are graded by playing both choices forward a few rounds with CS2's "
+        "money rules. Early beta: the pool is still small, so treat these as rough."
     )
 
     st.subheader("Key moments")
@@ -163,6 +194,10 @@ def render_report(report: Report) -> None:
         icon = "✅" if moment.kind == "good" else "⚠️"
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
+
+    if len(report.calls):
+        st.subheader("Every buy call")
+        render_calls(report.calls)
 
     st.subheader("Economy, round by round")
     st.altair_chart(economy_chart(report, mode), width="stretch")
@@ -229,6 +264,36 @@ def render_report(report: Report) -> None:
         )
 
 
+def render_calls(calls: pd.DataFrame, with_match: bool = False) -> None:
+    table = calls.assign(
+        made=calls["made"].str.title(),
+        their_buy=calls["their_buy"].map(BUY_LABELS),
+        cost=[f"{c:.2f}" if c > 0 else "" for c in calls["cost"]],
+    )
+    columns = (["map"] if with_match else []) + [
+        "round", "money_each", "their_buy", "made", "force_wins", "save_wins", "rounds_counted", "grade", "cost",
+    ]
+    if with_match:
+        table["map"] = table["map"].map(map_label)
+    st.dataframe(
+        table[columns],
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "map": "Map",
+            "round": "Round",
+            "money_each": st.column_config.NumberColumn("Money each", format="$%d", help="Money plus carried gear, per player."),
+            "their_buy": "Their buy",
+            "made": "You",
+            "force_wins": st.column_config.NumberColumn("Wins if force", format="%.1f", help="Expected rounds won over the rounds counted."),
+            "save_wins": st.column_config.NumberColumn("Wins if save", format="%.1f", help="Expected rounds won over the rounds counted."),
+            "rounds_counted": st.column_config.NumberColumn("Rounds counted", help="This round plus up to 3 after it, stopping at half-time."),
+            "grade": "Verdict",
+            "cost": "Rounds lost",
+        },
+    )
+
+
 # ---------- pages ----------
 
 
@@ -242,8 +307,8 @@ def report_page() -> None:
 
     parsed = None
     if source == "My CS2 replays":
-        folder = Path(st.sidebar.text_input("CS2 replays folder", str(REPLAYS)))
-        demos = sorted(folder.glob("*.dem"), key=lambda p: p.stat().st_mtime, reverse=True) if folder.is_dir() else []
+        folder = Path(st.sidebar.text_input("CS2 replays folder", str(REPLAYS), key="replays_folder"))
+        demos = replay_demos(folder)
         if not demos:
             st.info(
                 "No demos found. In CS2, open **Watch → Your Matches**, press **Download** on a match, "
@@ -276,7 +341,7 @@ def report_page() -> None:
             st.caption(f"Details: {type(error).__name__}: {error}")
             return
 
-    pool = save_and_pool(parsed)
+    pool, slope = save_and_pool(parsed)
     if database() is None:
         st.warning(
             "The match database isn't running, so win rates come from this match only. "
@@ -291,7 +356,77 @@ def report_page() -> None:
     picked = st.sidebar.selectbox("Which player are you?", options, index=default)
     st.session_state["steamid"] = names[picked]
 
-    render_report(build_report(parsed, names[picked], pool))
+    render_report(build_report(parsed, names[picked], pool, slope))
+
+
+def habits_page() -> None:
+    st.title("Your habits")
+    st.write("Patterns across all your stored matches: the economy habits that cost your team the most rounds.")
+    conn = database()
+    if conn is None:
+        st.warning("Habits need the match database. Start it with `docker compose up -d`, then refresh.")
+        return
+
+    demos = replay_demos(Path(st.session_state.get("replays_folder", str(REPLAYS))))
+    if demos and st.sidebar.button(f"Add all {len(demos)} replays", help="Parses every replay in your CS2 folder that isn't stored yet."):
+        added = add_all_replays(demos)
+        st.sidebar.success(f"Added {added} new match{'es' if added != 1 else ''}.")
+
+    try:
+        matches = db.load_matches(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    if not matches:
+        st.info("No matches stored yet. Open a report on the Match report page, or add all your replays from the sidebar.")
+        return
+
+    pool = pd.concat([m.team_rounds for m in matches], ignore_index=True)
+    counts = pd.concat([m.player_rounds.drop_duplicates("steamid")[["steamid", "name"]] for m in matches])
+    counts = counts.groupby("steamid").agg(name=("name", "last"), matches=("name", "size")).sort_values("matches", ascending=False)
+    labels = {
+        f"{row['name']}  ({row['matches']} match{'es' if row['matches'] != 1 else ''})": sid for sid, row in counts.iterrows()
+    }
+    options = list(labels)
+    remembered = st.session_state.get("steamid")
+    default = next((i for i, label in enumerate(options) if labels[label] == remembered), 0)
+    picked = st.sidebar.selectbox("Which player are you?", options, index=default)
+    st.session_state["steamid"] = labels[picked]
+
+    habits = build_habits(matches, labels[picked], equipment_slope(pool))
+    st.header(f"{habits.name} · {habits.matches} match{'es' if habits.matches != 1 else ''}")
+    calls = habits.calls
+    if len(calls):
+        right, close = int((calls["grade"] == GOOD_CALL).sum()), int((calls["grade"] == CLOSE).sum())
+        cols = st.columns(3)
+        cols[0].metric("Buy calls right", f"{right}/{len(calls)}")
+        cols[1].metric("Close calls", close)
+        cols[2].metric(
+            "Rounds lost to buy calls", f"{calls['cost'].sum():.1f}",
+            help=f"{calls['cost'].sum() / habits.matches:.2f} per match.",
+        )
+
+    if habits.matches < MIN_MATCHES:
+        st.info(f"Habits need at least {MIN_MATCHES} of your matches; you have {habits.matches}. Add more replays from the sidebar.")
+        return
+
+    st.subheader("Fix these first")
+    if not habits.fixes:
+        st.write("No costly habits found. Nice.")
+    for habit in habits.fixes[:3]:
+        with st.container(border=True):
+            cost = f"  \n*About {habit.cost:.2f} rounds per match.*" if habit.cost > 0 else ""
+            st.markdown(f"⚠️ **{habit.title}**  \n{habit.detail}{cost}")
+    for habit in habits.fixes[3:]:
+        st.markdown(f"- **{habit.title}.** {habit.detail}")
+    for habit in habits.strengths:
+        with st.container(border=True):
+            st.markdown(f"✅ **{habit.title}**  \n{habit.detail}")
+
+    if len(calls):
+        st.subheader("Every buy call")
+        render_calls(calls.sort_values("cost", ascending=False), with_match=True)
 
 
 def markdown_page(file: str):
@@ -306,6 +441,7 @@ st.set_page_config(page_title="Halftime", page_icon="⏱️", layout="wide")
 navigation = st.navigation(
     [
         st.Page(report_page, title="Match report", icon="📊", default=True),
+        st.Page(habits_page, title="Your habits", icon="🎯", url_path="habits"),
         st.Page(markdown_page("privacy.md"), title="Privacy", icon="🔒", url_path="privacy"),
         st.Page(markdown_page("terms.md"), title="Terms", icon="📄", url_path="terms"),
     ]

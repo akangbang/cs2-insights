@@ -78,3 +78,8 @@ Context: Demo download and parsing are the slowest and most expensive steps.
 Options: All history, last 20, last 10.
 Choice + why: Last 10. Keeps per-user parse time and API calls bounded, and is enough to show patterns. 3 insights per match keeps output focused on what to change. Results are cached by match ID so shared matches are parsed once.
 Revisit if: Parse cost per match turns out to be low, or users want longer-term trends.
+
+## 2026-10-27 — Grade buys with an equipment curve and a money simulation
+Context: Bucketed buy-matchup win rates (eco/force/full) made every force look right: "force" mixes $2,000 SMG buys with $3,500 rifle buys. Users need "what should I have done", not "what happened".
+Choice + why: Win chance per round = sigmoid(slope × ln(your equipment / theirs)), slope fit to the pool (1.08–1.18 so far, beats buckets on log loss). Each decision plays both choices forward up to 3 more rounds (stopping at half-time or match point), both teams then using the standard policy (full buy if they average $4,500+, else save; spend all on the last round). Close calls (< 0.10 rounds) aren't graded either way.
+Revisit if: The pool grows past ~100 matches (refit, check calibration by rank), or players report verdicts that feel wrong in specific situations.
