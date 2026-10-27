@@ -1,6 +1,6 @@
-# CS2 Decision Tracker
+# Halftime
 
-A CS2 tracker that grades your decisions, not just your aim.
+A decision coach for CS2: it grades your decisions, not just your aim.
 
 Most stat sites report what happened. This one answers "what should I have done?": it parses your match demos round by round and scores each choice (force vs. save, retake vs. save, peek vs. hold) by the win probability it added or cost. For example: *"Your round-2 force after a pistol loss cost 6% half win chance versus saving."*
 
