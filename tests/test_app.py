@@ -11,6 +11,12 @@ pytestmark = pytest.mark.skipif(not LOCAL_DEMOS, reason="no local CS2 demos")
 def test_report_renders_for_newest_replay_and_switches_player():
     app = AppTest.from_file("../app.py", default_timeout=120).run()
     assert not app.exception
+    # Nobody is reviewed until a player is chosen.
+    picker = app.selectbox[0]
+    assert picker.label == "Which player do you want to review?" and picker.value is None
+    assert not app.header
+    app = picker.set_value(picker.options[0]).run()
+    assert not app.exception
     assert app.header[0].value.split(" · ")[1].startswith(("Win", "Loss", "Draw"))
     assert [m.label for m in app.metric] == [
         "Rounds won", "Expected from your buys", "Buy calls right", "Rounds lost to buy calls",
@@ -19,7 +25,7 @@ def test_report_renders_for_newest_replay_and_switches_player():
     assert 3 <= len(app.dataframe) <= 6  # deaths, coverage and buy-call tables only show when there's something in them
 
     first = app.header[0].value
-    players = app.sidebar.selectbox[1]
+    players = app.selectbox[0]
     app = players.set_value(players.options[-1]).run()  # someone on the other team
     assert not app.exception
     assert app.header[0].value != first

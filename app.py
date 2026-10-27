@@ -460,12 +460,23 @@ def report_page() -> None:
             "Start it with `docker compose up -d` for pooled win rates."
         )
 
+    # Ask who to review whenever nobody already picked is in this demo; never guess.
+    match = parsed.match.iloc[0]
+    scores = {"A": int(match["team_a_score"]), "B": int(match["team_b_score"])}
     players = players_in(parsed)
-    names = {f"{row.name}  (team {row.team})": row.steamid for row in players.itertuples()}
-    remembered = st.session_state.get("steamid")
+    names = {f"{row.name}  ·  Team {row.team} ({scores[row.team]} rounds won)": row.steamid for row in players.itertuples()}
     options = list(names)
-    default = next((i for i, label in enumerate(options) if names[label] == remembered), 0)
-    picked = st.sidebar.selectbox("Which player are you?", options, index=default)
+    # A fixed key keeps the widget stable across reruns; preselect the last player reviewed if they're in this demo.
+    if st.session_state.get("review_player") not in options:
+        remembered = st.session_state.get("steamid")
+        st.session_state["review_player"] = next((label for label in options if names[label] == remembered), None)
+    picked = st.selectbox(
+        "Which player do you want to review?", options, key="review_player",
+        placeholder=f"Choose one of the {len(options)} players in this match",
+    )
+    if picked is None:
+        st.info(f"Pick a player above to see their report for {map_label(match['map'])} ({scores['A']}–{scores['B']}).")
+        return
     st.session_state["steamid"] = names[picked]
 
     render_report(build_report(parsed, names[picked], pool, slope, fight_model))
