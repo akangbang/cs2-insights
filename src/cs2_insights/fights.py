@@ -57,14 +57,13 @@ def _sigmoid(x):
 
 
 def _alive_features(team_alive, enemies_alive, plant):
-    a, b = np.asarray(team_alive, float), np.asarray(enemies_alive, float)
-    return np.column_stack([a - b, np.log((a + 0.5) / (b + 0.5)), np.asarray(plant, float) * np.ones_like(a)])
+    a, b, plant = np.broadcast_arrays(*(np.atleast_1d(np.asarray(v, float)) for v in (team_alive, enemies_alive, plant)))
+    return np.column_stack([a - b, np.log((a + 0.5) / (b + 0.5)), plant])
 
 
 def _trade_features(distance, angle):
-    distance = np.asarray(distance, float)
-    angle = np.minimum(np.asarray(angle, float) * np.ones_like(distance), 90)
-    return np.column_stack([np.ones_like(distance), distance / 1000, angle / 90])
+    distance, angle = np.broadcast_arrays(np.atleast_1d(np.asarray(distance, float)), np.atleast_1d(np.asarray(angle, float)))
+    return np.column_stack([np.ones_like(distance), distance / 1000, np.minimum(angle, 90) / 90])
 
 
 @dataclass(frozen=True)
@@ -75,7 +74,7 @@ class FightModel:
 
     def win_chance(self, team_alive, enemies_alive, plant=0) -> np.ndarray:
         """Chance the team wins the round. `plant`: +1 bomb planted and you're T, -1 and you're CT."""
-        a, b = np.asarray(team_alive, float), np.asarray(enemies_alive, float)
+        a, b, plant = np.broadcast_arrays(*(np.atleast_1d(np.asarray(v, float)) for v in (team_alive, enemies_alive, plant)))
         p = _sigmoid(_alive_features(a, b, plant) @ np.array(self.alive_weights))
         return np.where(a <= 0, 0.0, np.where(b <= 0, 1.0, p))
 
@@ -113,7 +112,7 @@ def _traded_by_mate(chances: pd.DataFrame, deaths: pd.DataFrame) -> pd.Series:
 def fit_fight_model(deaths: pd.DataFrame, chances: pd.DataFrame, team_rounds: pd.DataFrame) -> FightModel:
     """Refit the round, trade and grading models on a pool of matches; small pools keep the defaults."""
     model = FightModel()
-    if len(deaths):
+    if len(deaths) and len(team_rounds):
         d = _with_sides(deaths, team_rounds).dropna(subset=["won"])
         d = d[(d["team_alive"] > 0) & (d["enemies_alive"] > 0)]
         if len(d) * 2 >= MIN_STATES_TO_FIT:

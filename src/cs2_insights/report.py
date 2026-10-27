@@ -1,15 +1,19 @@
 """Turn a parsed match into a player's economy report.
 
 Each round's buy is compared with how often that buy-versus-buy matchup wins across every
-match in the pool, and every force-or-save decision is graded by simulating both choices
-(see grade.py), so a player sees which calls cost their team rounds.
+match in the pool, every force-or-save decision is graded by simulating both choices
+(see grade.py), and every death and teammate death is judged (see fights.py), so a player
+sees which calls and which fights cost their team rounds.
 """
 
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
 
 from cs2_insights.demo import ParsedDemo
+from cs2_insights import fights
+from cs2_insights.fights import FightModel, coverage, coverage_summary, judge_deaths
 from cs2_insights.grade import CLOSE, FORCE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, expected_win_rate, pooled_rates  # noqa: F401  (re-exported)
 
@@ -20,8 +24,11 @@ SPLIT_BUYER_MIN = 3_500
 SPLIT_SAVER_MAX = 1_500
 # Upset moments need this many pooled rounds behind the matchup, or they're mostly noise.
 UPSET_MIN_SAMPLE = 20
-# A wrong call is only worth a moment when it cost at least this many expected rounds.
+# A wrong call or avoidable death is only worth a moment when it cost at least this many rounds.
 COSTLY_CALL = 0.25
+COSTLY_DEATH = 0.10
+MOMENTS_BAD = 3
+MOMENTS_MAX = 6
 
 BUY_LABELS = {"pistol": "Pistol", "eco": "Eco", "force": "Force", "full": "Full buy"}
 
@@ -41,6 +48,9 @@ class Report:
     buy_summary: pd.DataFrame
     players: pd.DataFrame
     calls: pd.DataFrame = field(default_factory=pd.DataFrame)  # grade.grade_decisions() for your team
+    deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.judge_deaths() rows where you died
+    coverage: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.coverage(): teammate deaths near you
+    names: dict = field(default_factory=dict)  # steamid -> name, everyone in the match
     moments: list[Moment] = field(default_factory=list)
 
 
@@ -62,10 +72,14 @@ def _verdict(won: bool, expected: float) -> str:
     return "Expected win" if won else "Expected loss"
 
 
-def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame, slope: float = DEFAULT_EQUIPMENT_SLOPE) -> Report:
-    """Economy report for the team `steamid` played on.
+def build_report(
+    parsed: ParsedDemo, steamid: str, pool: pd.DataFrame, slope: float = DEFAULT_EQUIPMENT_SLOPE,
+    fight_model: FightModel | None = None,
+) -> Report:
+    """Economy and fight report for `steamid` and the team they played on.
 
-    `pool` comes from pooled_rates(); `slope` from rates.equipment_slope() on the same pool.
+    `pool` comes from pooled_rates(); `slope` from rates.equipment_slope() and `fight_model`
+    from fights.fit_fight_model() on the same pool.
     """
     me = parsed.player_rounds[parsed.player_rounds["steamid"] == steamid]
     if me.empty:
@@ -133,13 +147,33 @@ def build_report(parsed: ParsedDemo, steamid: str, pool: pd.DataFrame, slope: fl
         "rounds_lost_to_calls": round(float(calls["cost"].sum()), 1),
     }
 
+    model = fight_model or FightModel()
+    names = parsed.player_rounds.drop_duplicates("steamid", keep="last").set_index("steamid")["name"].to_dict()
+    judged = judge_deaths(parsed.deaths, parsed.trade_chances, parsed.team_rounds, model) if len(parsed.deaths) else pd.DataFrame()
+    my_deaths = judged[judged["victim"] == steamid].reset_index(drop=True) if len(judged) else judged
+    cover = coverage(judged, parsed.trade_chances, steamid, model) if len(parsed.trade_chances) else pd.DataFrame()
+    avoidable = my_deaths[my_deaths["label"].isin(fights.AVOIDABLE)] if len(my_deaths) else my_deaths
+    summary.update(
+        {
+            "fights_parsed": bool(len(judged)),
+            "deaths": len(my_deaths),
+            "traded_deaths": int((my_deaths["label"] == fights.TRADED).sum()) if len(my_deaths) else 0,
+            "avoidable_deaths": len(avoidable),
+            "rounds_lost_to_avoidable": round(float(avoidable["cost"].sum()), 1) if len(avoidable) else 0.0,
+            "coverage": coverage_summary(cover, model),
+        }
+    )
+
     return Report(
         summary=summary,
         rounds=rounds,
         buy_summary=buy_summary,
         players=_player_table(parsed.player_rounds, my_team, split),
         calls=calls,
-        moments=_moments(rounds, calls),
+        deaths=my_deaths,
+        coverage=cover,
+        names=names,
+        moments=_moments(rounds, calls, my_deaths, cover, names),
     )
 
 
@@ -194,24 +228,95 @@ def call_detail(call: pd.Series) -> str:
     )
 
 
-def _moments(rounds: pd.DataFrame, calls: pd.DataFrame) -> list[Moment]:
-    """The few rounds worth talking about, most important first."""
-    moments = []
-    label = BUY_LABELS.get
+def place_label(place) -> str:
+    """CS2 callout names ("TopofMid", "BombsiteA") as words ("Top of Mid", "Bombsite A")."""
+    if not isinstance(place, str) or not place:
+        return "somewhere"
+    words = re.sub(r"of(?=[A-Z])", " of ", place)
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", words).replace("  ", " ").strip()
 
-    # Wrong buy calls first: these are the decisions a team can actually change.
+
+def clock(seconds) -> str:
+    """Time since the round went live, as m:ss."""
+    seconds = int(seconds or 0)
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def death_detail(death: pd.Series, names: dict) -> str:
+    """One of your deaths explained: what happened and what to do instead."""
+    place = place_label(death["victim_place"])
+    before, after = death["win_before"], death["win_before"] - death["cost"]
+    swing = f"Your team's chance to win the round dropped from {before:.0%} to {after:.0%}."
+    label = death["label"]
+    if label == fights.TRADED:
+        text = f"{names.get(death['traded_by'], 'A teammate')} traded you in {death['trade_seconds']:.1f}s."
+        return text + (" You were pushing, so this was an entry or angle clear that did its job." if death["moving"] else "")
+    if label == fights.REPEEK:
+        return (f"You got a kill at {place}, peeked the same spot again and died. {swing} "
+                "After a kill, reposition or fall back so a teammate can trade.")
+    if label == fights.SHOULD_SAVE:
+        return (f"Your team was at {before:.0%} to win when you died at {place} with ${death['victim_equip']:,} of gear. "
+                "Hiding to save it keeps that money for next round.")
+    if label == fights.ALONE:
+        closest = death["closest_mate"]
+        gap = f"the closest was {closest:,.0f} units from your killer" if pd.notna(closest) else "none were nearby"
+        return (f"You were pushing at {place} and no teammate could trade: {gap} (trades are rare past "
+                f"{fights.TRADE_RANGE:,}). {swing} Wait for a teammate to follow before you clear the next angle.")
+    if label == fights.NOT_TRADED:
+        n = int(death["mates_in_range"])
+        return (f"{n} teammate{'s were' if n > 1 else ' was'} close enough to trade you at {place} but didn't within "
+                f"{fights.TRADE_SECONDS} seconds. {swing}")
+    return f"You lost a fight at {place}. {swing}"
+
+
+def cover_detail(row: pd.Series, names: dict) -> str:
+    """A teammate death near you explained from your side: where you were and where you aimed."""
+    mate = names.get(row["victim"], "A teammate")
+    text = f"{mate} died at {place_label(row['victim_place'])}. You were {row['distance_to_killer']:,.0f} units from the killer"
+    if row["verdict"] == fights.COVER_FACING_AWAY:
+        return (f"{text} but aiming {row['aim_angle']:.0f}° away from him. Facing the fight would have given you a "
+                f"{row['chance_if_facing']:.0%} chance to trade instead of {row['chance']:.0%}. When a teammate takes a "
+                "fight near you, aim where his killer will be.")
+    if row["verdict"] == fights.COVER_TRADED:
+        return f"{text} and traded in {row['trade_seconds']:.1f}s."
+    if row["verdict"] == fights.COVER_SET_UP:
+        return f"{text}, aiming {row['aim_angle']:.0f}° off: set up to trade ({row['chance']:.0%} chance), but no kill."
+    return f"{text}: too far to trade (trades are rare past {fights.TRADE_RANGE:,})."
+
+
+def _moments(rounds: pd.DataFrame, calls: pd.DataFrame, deaths: pd.DataFrame | None = None,
+             cover: pd.DataFrame | None = None, names: dict | None = None) -> list[Moment]:
+    """The few moments worth talking about: the costliest mistakes first, then what went well."""
+    names = names or {}
+    label = BUY_LABELS.get
+    bad = []  # (cost, Moment)
+
     wrong = calls[calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE]) & (calls["cost"] >= COSTLY_CALL)]
-    for call in wrong.sort_values("cost", ascending=False).head(2).itertuples(index=False):
+    for call in wrong.itertuples(index=False):
         call = pd.Series(call._asdict())
-        moments.append(
-            Moment(int(call["round"]), "bad", f"Round {call['round']}: {call['grade'].lower()}", call_detail(call)
-                   + f" Cost: about {call['cost']:.1f} rounds.")
-        )
+        bad.append((call["cost"], Moment(int(call["round"]), "bad", f"Round {call['round']}: {call['grade'].lower()}",
+                                         call_detail(call) + f" Cost: about {call['cost']:.1f} rounds.")))
+    if deaths is not None and len(deaths):
+        for _, death in deaths[deaths["label"].isin(fights.AVOIDABLE) & (deaths["cost"] >= COSTLY_DEATH)].iterrows():
+            bad.append((death["cost"], Moment(int(death["round"]), "bad",
+                                              f"Round {death['round']}, {clock(death['round_seconds'])}: {death['label'].lower()}",
+                                              death_detail(death, names))))
+    if cover is not None and len(cover):
+        for _, row in cover[cover["lost"] >= COSTLY_DEATH / 2].iterrows():
+            bad.append((row["lost"], Moment(int(row["round"]), "bad",
+                                            f"Round {row['round']}, {clock(row['round_seconds'])}: facing away when {names.get(row['victim'], 'a teammate')} died",
+                                            cover_detail(row, names))))
+    moments = [m for _, m in sorted(bad, key=lambda pair: pair[0], reverse=True)[:MOMENTS_BAD]]
+
     good = calls[calls["grade"] == GOOD_CALL]
     if len(good):
         edge = (good["force_wins"] - good["save_wins"]).abs()
         call = good.loc[edge.idxmax()]
         moments.append(Moment(int(call["round"]), "good", f"Round {call['round']}: right call to {call['made']}", call_detail(call)))
+    if cover is not None and len(cover) and (cover["verdict"] == fights.COVER_TRADED).any():
+        row = cover[cover["verdict"] == fights.COVER_TRADED].sort_values("trade_seconds").iloc[0]
+        moments.append(Moment(int(row["round"]), "good", f"Round {row['round']}, {clock(row['round_seconds'])}: you traded {names.get(row['victim'], 'a teammate')}",
+                              cover_detail(row, names)))
 
     split_rounds = rounds[rounds["split_buy"]]
     if len(split_rounds):
@@ -241,4 +346,4 @@ def _moments(rounds: pd.DataFrame, calls: pd.DataFrame) -> list[Moment]:
                 f"a matchup that wins only {best['expected']:.0%} of the time.",
             )
         )
-    return moments
+    return moments[:MOMENTS_MAX]

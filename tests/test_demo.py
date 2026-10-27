@@ -4,6 +4,8 @@ import pandas as pd
 import pytest
 
 from cs2_insights.demo import (
+    TRADE_LOOK_SECONDS,
+    aim_angle,
     assign_teams,
     buy_type,
     first_rounds_of_halves,
@@ -90,3 +92,28 @@ def test_parse_local_demo():
     assert (per_round["won"].sum() == 1).all()
     assert (per_round["side"].nunique() == 2).all()
     assert set(parsed.team_rounds[parsed.team_rounds["buy_type"] == "pistol"]["round"]) == {1, 13}
+
+
+def test_aim_angle():
+    eye = (0, 0, 64)
+    assert aim_angle(eye, 0, 0, (500, 0, 64)) == pytest.approx(0, abs=1e-6)  # yaw 0 looks along +X
+    assert aim_angle(eye, 0, 90, (500, 0, 64)) == pytest.approx(90)
+    assert aim_angle(eye, 0, 180, (500, 0, 64)) == pytest.approx(180)
+    assert aim_angle(eye, 45, 0, (100, 0, -36)) == pytest.approx(0, abs=1e-6)  # positive pitch looks down
+
+
+@pytest.mark.skipif(not LOCAL_DEMOS, reason="no local CS2 demos")
+def test_parse_local_demo_fights():
+    parsed = parse_demo(LOCAL_DEMOS[-1])
+    deaths, chances = parsed.deaths, parsed.trade_chances
+    assert len(deaths) >= 5 * parsed.match.iloc[0]["rounds"]  # at least half of everyone dies each round
+    # The first death of each round happens with everyone alive (a team may be short if someone left).
+    first = deaths.sort_values("tick").groupby("round").head(1)
+    players = parsed.team_rounds.set_index(["round", "team"])["players"]
+    enemy = first["victim_team"].map({"A": "B", "B": "A"})
+    assert (first["team_alive"].to_numpy() == [players[(r, t)] for r, t in zip(first["round"], first["victim_team"])]).all()
+    assert (first["enemies_alive"].to_numpy() == [players[(r, t)] for r, t in zip(first["round"], enemy)]).all()
+    assert deaths["trade_seconds"].dropna().between(0, TRADE_LOOK_SECONDS).all()
+    assert 0.02 < deaths["trade_seconds"].le(2).mean() < 0.4
+    assert set(chances["mate"]) <= set(parsed.player_rounds["steamid"])
+    assert chances["aim_angle"].between(0, 180).all() and (chances["distance_to_killer"] > 0).all()

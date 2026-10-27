@@ -95,6 +95,9 @@ def test_report_flags_force_trap_upset_and_split_buy():
     assert "Round 3: best upset" in titles
     assert report.players.loc[report.players["steamid"] == ME, "split_buys"].iat[0] == 1
 
+    # No fight data in this match: those sections stay empty instead of failing.
+    assert report.summary["fights_parsed"] is False and report.summary["coverage"]["grade"] is None
+
     # Every graded decision shows up in the round table too.
     assert report.summary["calls"] == len(report.calls)
     assert set(report.rounds["call"]) <= {"", "Good call", "Close call", "Should have saved", "Should have forced"}

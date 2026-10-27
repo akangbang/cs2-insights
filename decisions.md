@@ -83,3 +83,8 @@ Revisit if: Parse cost per match turns out to be low, or users want longer-term 
 Context: Bucketed buy-matchup win rates (eco/force/full) made every force look right: "force" mixes $2,000 SMG buys with $3,500 rifle buys. Users need "what should I have done", not "what happened".
 Choice + why: Win chance per round = sigmoid(slope × ln(your equipment / theirs)), slope fit to the pool (1.08–1.18 so far, beats buckets on log loss). Each decision plays both choices forward up to 3 more rounds (stopping at half-time or match point), both teams then using the standard policy (full buy if they average $4,500+, else save; spend all on the last round). Close calls (< 0.10 rounds) aren't graded either way.
 Revisit if: The pool grows past ~100 matches (refit, check calibration by rank), or players report verdicts that feel wrong in specific situations.
+
+## 2026-10-27 — Judge deaths and grade trade coverage, not just buys
+Context: Team buy calls are small (about 0.5 rounds a match for a whole team) and solo-queue players can't act on them. Deaths cost far more, and most players don't trade or hold angles that cover teammates.
+Choice + why: A death traded within 2 seconds counts as fine, including entries and angle clears. Coverage is graded from positions at each teammate death: distance to the killer and how far your aim was from him, turned into a trade chance by a model fitted on the pool. No map geometry (walls) yet, so it uses straight-line distance; the fitted chances already absorb the typical effect of walls.
+Revisit if: Players report verdicts that are wrong because of walls (e.g. close but behind a wall), or a licensed source of map geometry becomes available.

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from cs2_insights import db
-from cs2_insights.demo import ParsedDemo
+from cs2_insights.demo import PARSER_VERSION, ParsedDemo
 
 MATCH_ID = "pytest_match"
 
@@ -83,3 +83,29 @@ def test_load_matches_rebuilds_stored_matches(clean_conn):
     assert parsed.match.iloc[0]["map"] == "de_test"
     assert len(parsed.team_rounds) == 2
     assert set(parsed.player_rounds["name"]) == {"one", "two"}
+
+
+def test_fights_round_trip_and_parser_version(clean_conn):
+    parsed = _fake_demo()
+    parsed.match["parser_version"] = PARSER_VERSION
+    parsed.deaths = pd.DataFrame([{
+        "match_id": MATCH_ID, "round": 1, "tick": 15, "round_seconds": 0.1, "victim": "pytest_2", "killer": "pytest_1",
+        "victim_team": "B", "killer_team": "A", "weapon": "ak47", "headshot": True, "victim_place": "Ramp",
+        "killer_place": "Ramp", "victim_equip": 3_000, "victim_blind": False, "victim_speed": 120.0, "victim_x": 1.0,
+        "victim_y": 2.0, "killer_x": 3.0, "killer_y": 4.0, "team_alive": 1, "enemies_alive": 1, "bomb_planted": False,
+        "traded_by": None, "trade_seconds": None,
+    }])
+    parsed.trade_chances = pd.DataFrame([{
+        "match_id": MATCH_ID, "round": 1, "tick": 15, "victim": "pytest_2", "mate": "pytest_1", "distance_to_killer": 400.0,
+        "distance_to_victim": 300.0, "aim_angle": 12.5, "mate_x": 0.0, "mate_y": 0.0, "mate_yaw": 90.0,
+    }])
+    db.load_parsed(clean_conn, parsed)
+    assert db.match_is_current(clean_conn, MATCH_ID)
+    stored = db.load_matches(clean_conn, steamid="pytest_1")[0]
+    clean_conn.commit()
+    assert stored.deaths.iloc[0]["weapon"] == "ak47" and stored.deaths.iloc[0]["traded_by"] is None
+    assert stored.trade_chances.iloc[0]["aim_angle"] == pytest.approx(12.5)
+
+    db.load_parsed(clean_conn, _fake_demo())  # an old parse: no version, no fights
+    assert not db.match_is_current(clean_conn, MATCH_ID)
+    assert _count(clean_conn, "deaths") == 0

@@ -2,14 +2,17 @@
 
 One match can't show a habit; ten can. Every force-or-save decision is graded (grade.py)
 and grouped by situation, split buys are compared with what the team's equipment should
-win, and money left unspent when it's about to reset is totalled.
+win, money left unspent when it's about to reset is totalled, and avoidable deaths and
+teammate coverage (fights.py) are compared with every player in the pool.
 """
 
 from dataclasses import dataclass, field
 
 import pandas as pd
 
+from cs2_insights import fights
 from cs2_insights.demo import ParsedDemo
+from cs2_insights.fights import FightModel, coverage, judge_deaths, setup_scores
 from cs2_insights.grade import GOOD_CALL, SAVE, SHOULD_FORCE, SHOULD_SAVE, economy_states, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, equipment_win_rate
 from cs2_insights.report import SPLIT_BUYER_MIN, split_buy_rounds
@@ -19,6 +22,27 @@ MIN_MATCHES = 3
 # Money left in your pocket on the last round of a half above this is worth flagging.
 WASTED_MONEY_MIN = 1_000
 GERUND = {"save": "saving", "force": "forcing"}
+# Your traded-death rate must beat the pool's by this much to count as a strength.
+TRADED_MARGIN = 0.03
+# An avoidable-death habit needs at least this many examples.
+MIN_DEATHS_FOR_HABIT = 2
+DEATH_HABITS = {
+    fights.REPEEK: (
+        "You re-peek after getting a kill",
+        "{n} times in {m} matches you got a kill, peeked the same spot again and died ({per:.1f} per match). "
+        "After a kill, reposition or fall back so a teammate can trade.",
+    ),
+    fights.ALONE: (
+        "You push without support",
+        "{n} times in {m} matches you died pushing with no teammate close enough to trade ({per:.1f} per match). "
+        "Wait for a teammate to follow before you clear the next angle.",
+    ),
+    fights.SHOULD_SAVE: (
+        "You die with your gun in rounds that are already lost",
+        "{n} times in {m} matches your team was under {lost:.0%} to win and you died with $3,000+ of gear "
+        "(${gear:,} in total). Hide and save it: next round starts from that money.",
+    ),
+}
 
 
 @dataclass
@@ -34,6 +58,10 @@ class Habits:
     name: str
     matches: int
     calls: pd.DataFrame  # every graded decision, with match_id and map
+    deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # your judged deaths, with match_id
+    coverage: pd.DataFrame = field(default_factory=pd.DataFrame)  # teammate deaths near you, with match_id
+    fight_matches: int = 0  # matches with death data
+    coverage_grade: str | None = None
     fixes: list[Habit] = field(default_factory=list)
     strengths: list[Habit] = field(default_factory=list)
 
@@ -46,9 +74,19 @@ def _situation(call: pd.Series, first_rounds: set[int]) -> str:
     return "mid-half"
 
 
-def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT_EQUIPMENT_SLOPE) -> Habits:
-    """Habits for `steamid` across `matches` (only the matches they played are used)."""
+def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT_EQUIPMENT_SLOPE,
+                 fight_model: FightModel | None = None) -> Habits:
+    """Habits for `steamid` across `matches` (only the matches they played are used).
+
+    All `matches` (not only the player's) set the pool averages deaths and coverage are compared with.
+    """
+    model = fight_model or FightModel()
     calls, splits, wasted, name, played = [], [], [], None, 0
+    my_deaths, my_cover, pool_deaths, pool_chances = [], [], [], []
+    for parsed in matches:
+        if len(parsed.deaths):
+            pool_deaths.append(parsed.deaths)
+            pool_chances.append(parsed.trade_chances.assign(match_id=parsed.match.iloc[0]["match_id"]))
     for parsed in matches:
         me = parsed.player_rounds[parsed.player_rounds["steamid"] == steamid]
         if me.empty:
@@ -65,6 +103,12 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
         graded["lost_previous"] = [not mine["won"].get(r - 1, True) for r in graded["round"]]
         graded["situation"] = [_situation(c, first_rounds) for _, c in graded.iterrows()]
         calls.append(graded.assign(match_id=match["match_id"], map=match["map"]))
+
+        if len(parsed.deaths):
+            judged = judge_deaths(parsed.deaths, parsed.trade_chances, parsed.team_rounds, model)
+            tags = {"match_id": match["match_id"], "map": match["map"]}
+            my_deaths.append(judged[judged["victim"] == steamid].assign(**tags))
+            my_cover.append(coverage(judged, parsed.trade_chances, steamid, model).assign(**tags))
 
         for number in split_buy_rounds(parsed.player_rounds, team):
             you = me[me["round"] == number]
@@ -92,8 +136,16 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
         raise ValueError("That player isn't in any stored match.")
     all_calls = pd.concat(calls, ignore_index=True) if calls else pd.DataFrame()
     habits = Habits(name=name, matches=played, calls=all_calls)
+    if my_deaths:
+        habits.deaths = pd.concat(my_deaths, ignore_index=True)
+        habits.coverage = pd.concat(my_cover, ignore_index=True)
+        habits.fight_matches = len(my_deaths)
+        if len(habits.coverage) >= fights.MIN_COVERAGE_CHANCES:
+            habits.coverage_grade = model.grade(float(habits.coverage["chance"].mean()))
     if played < MIN_MATCHES:
         return habits
+    if habits.fight_matches:
+        _fight_habits(habits, pd.concat(pool_deaths, ignore_index=True), pd.concat(pool_chances, ignore_index=True), model)
 
     # Wrong calls, grouped by what you did and when.
     wrong = all_calls[all_calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE])]
@@ -150,6 +202,47 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
             )
         )
     return habits
+
+
+def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.DataFrame, model: FightModel) -> None:
+    """Avoidable deaths and coverage, compared with every player in the pool."""
+    m, deaths, cover = habits.fight_matches, habits.deaths, habits.coverage
+    for label, (title, template) in DEATH_HABITS.items():
+        group = deaths[deaths["label"] == label]
+        if len(group) >= MIN_DEATHS_FOR_HABIT:
+            detail = template.format(n=len(group), m=m, per=len(group) / m, lost=fights.LOST_CAUSE, gear=int(group["victim_equip"].sum()))
+            habits.fixes.append(Habit(title, detail + f" These deaths cost about {group['cost'].sum():.1f} rounds.", group["cost"].sum() / m))
+
+    if len(cover) >= fights.MIN_COVERAGE_CHANCES:
+        pool_score = float(setup_scores(pool_chances, model).mean()) if len(pool_chances) else 0.0
+        score = float(cover["chance"].mean())
+        in_range = cover["distance_to_killer"] <= fights.TRADE_RANGE
+        set_up = in_range & (cover["aim_angle"] <= fights.FACING_ANGLE)
+        trades = int((cover["verdict"] == fights.COVER_TRADED).sum())
+        detail = (
+            f"{len(cover)} teammate deaths happened near you in {m} matches. You were close enough to trade {int(in_range.sum())} times "
+            f"and aiming at the fight in {int(set_up.sum())} of those. You traded {trades}; players in the pool would trade "
+            f"about {cover['chance'].sum():.1f} from your spots."
+        )
+        if habits.coverage_grade in ("D", "F"):
+            facing_away = int((cover["verdict"] == fights.COVER_FACING_AWAY).sum())
+            tip = (" Most of the gap is where you aim: when a teammate takes a fight near you, aim where his killer will be."
+                   if facing_away >= in_range.sum() / 2 else
+                   " Most of the gap is distance: play close enough to your teammates (under 900 units) to trade them.")
+            cost = max(pool_score - score, 0) * len(cover) * float(cover["cost"].mean()) / m
+            habits.fixes.append(Habit(f"You're rarely set up to trade teammates (coverage {habits.coverage_grade})", detail + tip, cost))
+        elif habits.coverage_grade in ("A", "B"):
+            habits.strengths.append(Habit(f"You cover your teammates well (coverage {habits.coverage_grade})", detail, 0.0, "good"))
+
+    traded = deaths["label"] == fights.TRADED
+    pool_traded = pool_deaths["trade_seconds"].le(fights.TRADE_SECONDS).mean() if len(pool_deaths) else 0.0
+    if len(deaths) and traded.mean() >= pool_traded + TRADED_MARGIN:
+        habits.strengths.append(Habit(
+            f"{int(traded.sum())} of your {len(deaths)} deaths were traded",
+            f"That's {traded.mean():.0%}; across the pool it's {pool_traded:.0%}. You fight where teammates can back you up.",
+            0.0, "good",
+        ))
+    habits.fixes.sort(key=lambda h: h.cost, reverse=True)
 
 
 def _why(made: str, situation: str) -> str:

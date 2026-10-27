@@ -14,14 +14,18 @@ import streamlit as st
 
 from cs2_insights import db
 from cs2_insights.demo import ParsedDemo, parse_demo
+from cs2_insights import fights
+from cs2_insights.demo import TICK_RATE
+from cs2_insights.fights import FightModel, fit_fight_model
 from cs2_insights.grade import CLOSE, GOOD_CALL
 from cs2_insights.habits import MIN_MATCHES, build_habits
 from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
 from cs2_insights.rates import equipment_slope
-from cs2_insights.report import BUY_LABELS, Report, build_report, players_in, pooled_rates
+from cs2_insights.report import BUY_LABELS, Report, build_report, clock, place_label, players_in, pooled_rates
 
 ROOT = Path(__file__).resolve().parent
 REPLAYS = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays")
+WATCH_LEAD_SECONDS = 5  # "watch" jumps to a few seconds before the moment
 DISCLAIMER = (
     "Halftime is not affiliated with or endorsed by Valve Corporation. "
     "Counter-Strike and CS2 are trademarks of Valve Corporation."
@@ -73,20 +77,22 @@ def parse_upload(upload) -> ParsedDemo:
         return parse_cached(str(path), digest)
 
 
-def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float]:
-    """Store the match (so it joins the pool); return pooled win rates and the equipment slope
-    from every other match."""
+def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
+    """Store the match (so it joins the pool); return pooled win rates, the equipment slope and
+    the fight model, all from every other match."""
     conn = database()
     if conn is None:
-        return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds)
+        return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
     try:
         db.load_parsed(conn, parsed)
-        pool = db.pool_team_rounds(conn, exclude_match_id=parsed.match.iloc[0]["match_id"])
+        match_id = parsed.match.iloc[0]["match_id"]
+        pool = db.pool_team_rounds(conn, exclude_match_id=match_id)
+        fight_pool = db.pool_fights(conn, exclude_match_id=match_id)
         conn.commit()  # end the read transaction so this long-lived connection never holds locks
-        return pooled_rates(pool), equipment_slope(pool)
+        return pooled_rates(pool), equipment_slope(pool), fit_fight_model(*fight_pool)
     except Exception:
         conn.rollback()
-        return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds)
+        return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
 
 
 def replay_demos(folder: Path) -> list[Path]:
@@ -181,10 +187,23 @@ def render_report(report: Report) -> None:
         "Rounds lost to buy calls", s["rounds_lost_to_calls"],
         help="Expected rounds the wrong force-or-save calls cost, compared with the other choice.",
     )
+    if s.get("fights_parsed"):
+        c = s["coverage"]
+        cols = st.columns(4)
+        cols[0].metric("Deaths traded", f"{s['traded_deaths']}/{s['deaths']}",
+                       help=f"A teammate killed your killer within {fights.TRADE_SECONDS} seconds.")
+        cols[1].metric("Avoidable deaths", s["avoidable_deaths"],
+                       help="Re-peeks after a kill, pushes with nobody close enough to trade, and deaths with gear in rounds already lost.")
+        cols[2].metric("Rounds lost to avoidable deaths", s["rounds_lost_to_avoidable"],
+                       help="How much these deaths dropped your team's chance to win their rounds, added up.")
+        cols[3].metric("Coverage grade", c["grade"] or "–",
+                       help="How well you were set up to trade teammates who died near you: close to the killer and aiming at him. "
+                       "Graded against every player in Halftime's pool.")
     st.caption(
         f"Expected wins add up how often each of your buy matchups wins across {s['pool_rounds']:,} rounds "
         "in Halftime's match pool. Buy calls are graded by playing both choices forward a few rounds with CS2's "
-        "money rules. Early beta: the pool is still small, so treat these as rough."
+        "money rules. Deaths and coverage are judged from where everyone stood and aimed. Early beta: the pool is "
+        "still small, so treat these as rough."
     )
 
     st.subheader("Key moments")
@@ -194,6 +213,13 @@ def render_report(report: Report) -> None:
         icon = "✅" if moment.kind == "good" else "⚠️"
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
+
+    if len(report.deaths):
+        st.subheader("Your deaths")
+        render_deaths(report)
+    if s.get("fights_parsed"):
+        st.subheader("Covering your teammates")
+        render_coverage(report)
 
     if len(report.calls):
         st.subheader("Every buy call")
@@ -262,6 +288,92 @@ def render_report(report: Report) -> None:
                 "split_buys": st.column_config.NumberColumn("Bought in split buys"),
             },
         )
+
+
+def watch_command(tick: int) -> str:
+    return f"demo_gototick {max(int(tick) - WATCH_LEAD_SECONDS * TICK_RATE, 0)}"
+
+
+WATCH_HELP = "Open the demo in CS2, then paste this into the console (~) to jump to 5 seconds before the moment."
+
+
+def render_deaths(report: Report) -> None:
+    d = report.deaths
+    names = report.names
+    table = pd.DataFrame(
+        {
+            "round": d["round"],
+            "time": d["round_seconds"].map(clock),
+            "where": d["victim_place"].map(place_label),
+            "killer": d["killer"].map(lambda k: names.get(k, "")),
+            "weapon": d["weapon"],
+            "verdict": d["label"],
+            "chance": (d["win_before"] * 100).round(),
+            "cost": d["cost"].round(2),
+            "traded_by": [names.get(t, "") if v == fights.TRADED else "" for t, v in zip(d["traded_by"], d["label"])],
+            "watch": d["tick"].map(watch_command),
+        }
+    )
+    st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "round": "Round",
+            "time": st.column_config.TextColumn("Time", help="Time since the round went live."),
+            "where": "Where",
+            "killer": "Killed by",
+            "weapon": "Weapon",
+            "verdict": "Verdict",
+            "chance": st.column_config.NumberColumn("Team chance before", format="%d%%"),
+            "cost": st.column_config.NumberColumn("Rounds lost", format="%.2f", help="How much this death dropped your team's chance to win the round."),
+            "traded_by": "Traded by",
+            "watch": st.column_config.TextColumn("Watch", help=WATCH_HELP),
+        },
+    )
+
+
+def render_coverage(report: Report) -> None:
+    c = report.summary["coverage"]
+    if not c["chances"]:
+        st.write("No teammate died near you this match, so there's nothing to grade.")
+        return
+    st.write(
+        f"**{c['chances']}** teammate deaths happened near you. You were close enough to trade (within {fights.TRADE_RANGE:,} units "
+        f"of the killer) **{c['in_range']}** times, and also aiming at the fight (within {fights.FACING_ANGLE}°) "
+        f"**{c['set_up']}** times. You traded **{c['trades']}**; for where you stood and aimed, players in the pool "
+        f"would trade about **{c['expected_trades']}**."
+    )
+    cover, names = report.coverage, report.names
+    table = pd.DataFrame(
+        {
+            "round": cover["round"],
+            "time": cover["round_seconds"].map(clock),
+            "teammate": cover["victim"].map(lambda v: names.get(v, "")),
+            "where": cover["victim_place"].map(place_label),
+            "distance": cover["distance_to_killer"].round(),
+            "aim": cover["aim_angle"].round(),
+            "chance": (cover["chance"] * 100).round(),
+            "verdict": cover["verdict"],
+            "watch": cover["tick"].map(watch_command),
+        }
+    )
+    st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "round": "Round",
+            "time": "Time",
+            "teammate": "Teammate who died",
+            "where": "Where",
+            "distance": st.column_config.NumberColumn("Your distance to killer", format="%d"),
+            "aim": st.column_config.NumberColumn("Your aim off (°)", format="%d°", help="Degrees between where you aimed and the killer."),
+            "chance": st.column_config.NumberColumn("Trade chance", format="%d%%", help="How often players in the pool trade from that distance and aim."),
+            "verdict": "Verdict",
+            "watch": st.column_config.TextColumn("Watch", help=WATCH_HELP),
+        },
+    )
 
 
 def render_calls(calls: pd.DataFrame, with_match: bool = False) -> None:
@@ -341,7 +453,7 @@ def report_page() -> None:
             st.caption(f"Details: {type(error).__name__}: {error}")
             return
 
-    pool, slope = save_and_pool(parsed)
+    pool, slope, fight_model = save_and_pool(parsed)
     if database() is None:
         st.warning(
             "The match database isn't running, so win rates come from this match only. "
@@ -356,7 +468,7 @@ def report_page() -> None:
     picked = st.sidebar.selectbox("Which player are you?", options, index=default)
     st.session_state["steamid"] = names[picked]
 
-    render_report(build_report(parsed, names[picked], pool, slope))
+    render_report(build_report(parsed, names[picked], pool, slope, fight_model))
 
 
 def habits_page() -> None:
@@ -394,7 +506,16 @@ def habits_page() -> None:
     picked = st.sidebar.selectbox("Which player are you?", options, index=default)
     st.session_state["steamid"] = labels[picked]
 
-    habits = build_habits(matches, labels[picked], equipment_slope(pool))
+    with_fights = [m for m in matches if len(m.deaths)]
+    fight_model = (
+        fit_fight_model(
+            pd.concat([m.deaths for m in with_fights], ignore_index=True),
+            pd.concat([m.trade_chances for m in with_fights], ignore_index=True),
+            pool,
+        )
+        if with_fights else FightModel()
+    )
+    habits = build_habits(matches, labels[picked], equipment_slope(pool), fight_model)
     st.header(f"{habits.name} · {habits.matches} match{'es' if habits.matches != 1 else ''}")
     calls = habits.calls
     if len(calls):
@@ -406,6 +527,18 @@ def habits_page() -> None:
             "Rounds lost to buy calls", f"{calls['cost'].sum():.1f}",
             help=f"{calls['cost'].sum() / habits.matches:.2f} per match.",
         )
+    if habits.fight_matches:
+        deaths = habits.deaths
+        avoidable = deaths["label"].isin(fights.AVOIDABLE)
+        cols = st.columns(3)
+        cols[0].metric("Deaths traded", f"{int((deaths['label'] == fights.TRADED).sum())}/{len(deaths)}")
+        cols[1].metric("Avoidable deaths per match", f"{avoidable.sum() / habits.fight_matches:.1f}")
+        cols[2].metric("Coverage grade", habits.coverage_grade or "–",
+                       help="How well you're set up to trade teammates who die near you, against every player in the pool.")
+    outdated = len(matches) - len(with_fights)
+    if outdated:
+        st.caption(f"{outdated} stored match{'es were' if outdated != 1 else ' was'} parsed before deaths were tracked; "
+                   "re-add your replays from the sidebar to include them.")
 
     if habits.matches < MIN_MATCHES:
         st.info(f"Habits need at least {MIN_MATCHES} of your matches; you have {habits.matches}. Add more replays from the sidebar.")

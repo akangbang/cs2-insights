@@ -12,8 +12,11 @@ def test_report_renders_for_newest_replay_and_switches_player():
     app = AppTest.from_file("../app.py", default_timeout=120).run()
     assert not app.exception
     assert app.header[0].value.split(" · ")[1].startswith(("Win", "Loss", "Draw"))
-    assert [m.label for m in app.metric] == ["Rounds won", "Expected from your buys", "Buy calls right", "Rounds lost to buy calls"]
-    assert len(app.dataframe) in (3, 4)  # the buy-call table only shows when there were decisions
+    assert [m.label for m in app.metric] == [
+        "Rounds won", "Expected from your buys", "Buy calls right", "Rounds lost to buy calls",
+        "Deaths traded", "Avoidable deaths", "Rounds lost to avoidable deaths", "Coverage grade",
+    ]
+    assert 3 <= len(app.dataframe) <= 6  # deaths, coverage and buy-call tables only show when there's something in them
 
     first = app.header[0].value
     players = app.sidebar.selectbox[1]
