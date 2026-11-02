@@ -7,6 +7,10 @@ Most stat sites report what happened. Halftime answers "what should I have done?
 ## Screenshots
 Real output from real matches. Player names are replaced with stand-ins.
 
+**Getting started.** New players get four steps from downloading a match to their first report.
+
+![First-run guide](docs/screenshots/guide.png)
+
 **Your match at a glance.** A one-line summary, four scorecards (compared with your last 5 matches once you have them), a clickable round timeline and the moments that mattered most.
 
 ![Match report summary](docs/screenshots/report.png)
@@ -49,6 +53,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
+- **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.
 - Privacy and Terms pages; light and dark mode.
 
 ## How it works

@@ -979,6 +979,34 @@ def focus_chart(past: pd.DataFrame, column: str, mode: str) -> alt.Chart:
     return (bars + line + text).properties(height=240)
 
 
+GUIDE_STEPS = [
+    ("📥", "Get a match",
+     "In CS2 open **Watch → Your Matches** and press **Download** on a match. Halftime finds it in your replays folder "
+     "automatically. On FACEIT, download the demo from the match room and use **Upload a demo** in the sidebar."),
+    ("🗂️", "Pick it", "Choose the match in the sidebar. The newest download is at the top."),
+    ("🙋", "Pick yourself", "Choose your name, then press **This is me** so Halftime opens on you from then on."),
+    ("🎯", "Learn one thing", "Every death, buy, grenade and clutch is judged with the reasons. Pick one habit to work on in "
+     "**Your habits** and watch it change match by match."),
+]
+
+
+def render_guide() -> None:
+    """How to get started: in full until you've saved yourself with "This is me", then tucked away."""
+    def steps() -> None:
+        cols = st.columns(len(GUIDE_STEPS))
+        for col, (icon, title, text) in zip(cols, GUIDE_STEPS):
+            with col.container(border=True):
+                st.markdown(f"### {icon}\n**{title}**")
+                st.caption(text)
+
+    if saved_setting("me"):
+        with st.expander("How Halftime works"):
+            steps()
+    else:
+        st.markdown("#### Get your first report in four steps")
+        steps()
+
+
 # ---------- pages ----------
 
 
@@ -995,10 +1023,8 @@ def report_page() -> None:
         folder = Path(st.sidebar.text_input("CS2 replays folder", str(REPLAYS), key="replays_folder"))
         demos = replay_demos(folder)
         if not demos:
-            st.info(
-                "No demos found. In CS2, open **Watch → Your Matches**, press **Download** on a match, "
-                "then refresh this page. Or switch to **Upload a demo**."
-            )
+            st.info("No demos found yet. Download a match in CS2 (step 1 below), then refresh this page.")
+            render_guide()
             return
         labels = {
             f"{datetime.fromtimestamp(p.stat().st_mtime):%b %d, %Y %H:%M} · {p.stat().st_size / 1e6:.0f} MB": p
@@ -1015,6 +1041,7 @@ def report_page() -> None:
         st.sidebar.caption("By uploading you agree to the Terms and Privacy policy (see the pages in the menu).")
         if upload is None:
             st.info("Upload a demo in the sidebar to get your report.")
+            render_guide()
             return
         try:
             parsed = parse_upload(upload)
@@ -1050,6 +1077,7 @@ def report_page() -> None:
     )
     if picked is None:
         st.info(f"Pick a player above to see their report for {map_label(match['map'])} ({scores['A']}–{scores['B']}).")
+        render_guide()
         return
     steamid = names[picked]
     st.session_state["steamid"] = steamid
