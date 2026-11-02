@@ -109,3 +109,12 @@ def test_fights_round_trip_and_parser_version(clean_conn):
     db.load_parsed(clean_conn, _fake_demo())  # an old parse: no version, no fights
     assert not db.match_is_current(clean_conn, MATCH_ID)
     assert _count(clean_conn, "deaths") == 0
+
+
+def test_settings_round_trip(clean_conn):
+    db.set_setting(clean_conn, "pytest_key", "one")
+    db.set_setting(clean_conn, "pytest_key", "two")
+    assert db.get_setting(clean_conn, "pytest_key") == "two"
+    assert db.get_setting(clean_conn, "pytest_missing") is None
+    clean_conn.execute("DELETE FROM settings WHERE key = 'pytest_key'")
+    clean_conn.commit()

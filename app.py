@@ -23,6 +23,7 @@ from cs2_insights.fights import FightModel, fit_fight_model
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
 from cs2_insights.habits import MIN_MATCHES, build_habits
 from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
+from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
 from cs2_insights.report import (
     BUY_LABELS,
@@ -204,14 +205,17 @@ def economy_chart(report: Report, mode: str) -> alt.Chart:
     return alt.vconcat((lines + points).properties(height=320), strip, spacing=4).resolve_scale(color="independent")
 
 
-def render_report(report: Report) -> None:
+def render_report(report: Report, past: pd.DataFrame | None = None, current: dict | None = None) -> None:
     s = report.summary
     mode = theme_mode()
+    past = past if past is not None else pd.DataFrame()
 
     st.header(f"{map_label(s['map'])} · {s['result']} {s['your_score']}–{s['their_score']}")
     st.caption(f"Reviewing **{s['name']}** · {s['rounds']} rounds")
     st.markdown(match_story(report))
-    render_scorecards(report)
+    if current:
+        render_focus_banner(current, past, current["match_id"])
+    render_scorecards(report, past, current["match_id"] if current else None)
 
     st.subheader("Top moments")
     if not report.moments:
@@ -241,16 +245,27 @@ def theme_mode() -> str:
     return "dark" if getattr(st.context.theme, "type", "light") == "dark" else "light"
 
 
-def render_scorecards(report: Report) -> None:
+def render_scorecards(report: Report, past: pd.DataFrame, match_id: str | None) -> None:
+    """Four headline numbers; the arrows compare with your own last few matches."""
     s = report.summary
     over = s["your_score"] - s["expected_wins"]
+    others = past[past["match_id"] != match_id].tail(RECENT_MATCHES) if len(past) else past
+    average = others.mean(numeric_only=True) if len(others) else pd.Series(dtype=float)
+    vs = f"vs your last {len(others)}"
+
+    def change(value, column, scale=1.0, unit=""):
+        if column not in average or pd.isna(average[column]) or value is None:
+            return None
+        return f"{(value - average[column]) * scale:+.1f}{unit} {vs}"
+
     cards = st.columns(4)
     with cards[0].container(border=True):
         st.metric("Rounds won", s["your_score"], f"{over:+.1f} vs your buys", delta_color="normal")
         st.caption(f"Your team's buys usually win about {s['expected_wins']:.0f} of these {s['rounds']} rounds.")
     with cards[1].container(border=True):
         if s.get("fights_parsed"):
-            st.metric("Avoidable deaths", f"{s['avoidable_deaths']} of {s['deaths']}",
+            st.metric("Avoidable deaths", f"{s['avoidable_deaths']} of {s['deaths']}", change(s["avoidable_deaths"], "avoidable"),
+                      delta_color="inverse",
                       help="Deaths a different decision would likely have prevented. The Your deaths tab shows why for each one.")
             kinds = report.deaths[report.deaths["label"].isin(fights.AVOIDABLE)]["label"].value_counts()
             st.caption(" · ".join(f"{n} {SHORT_LABELS[label]}" for label, n in kinds.items()) or "None. Clean fights.")
@@ -259,12 +274,14 @@ def render_scorecards(report: Report) -> None:
             st.caption("Re-add this demo to see your deaths.")
     with cards[2].container(border=True):
         c = s.get("coverage") or {}
-        st.metric("Coverage", c.get("grade") or "–",
+        rate = c["set_up"] / c["chances"] if c.get("chances") else None
+        st.metric("Coverage", c.get("grade") or "–", change(rate, "set_up_rate", 100, " pts in position"),
                   help="How often you were in position to trade teammates who died near you. The Covering teammates tab shows how it's worked out.")
         st.caption(f"In position to trade {c.get('set_up', 0)} of {c.get('chances', 0)} times · traded {c.get('trades', 0)}"
                    if c.get("chances") else "No teammate died near you.")
     with cards[3].container(border=True):
-        st.metric("Buy calls right", f"{s['calls_right']} of {s['calls']}",
+        st.metric("Buy calls right", f"{s['calls_right']} of {s['calls']}", change(s["calls_wrong"], "wrong_calls", unit=" wrong"),
+                  delta_color="inverse",
                   help="Rounds your team could force or save, where Halftime's simulation agrees with what you did.")
         st.caption(f"Wrong calls cost about {s['rounds_lost_to_calls']:.1f} rounds." if s["calls_wrong"] else "No costly calls.")
 
@@ -671,6 +688,94 @@ def render_moment_map(death: pd.Series, report: Report) -> None:
         st.caption("Top-down view at that moment. Lines show where each teammate was aiming; the dashed line is the fight. Walls aren't drawn.")
 
 
+# ---------- progress ----------
+
+
+@st.cache_data(show_spinner="Loading your past matches…", max_entries=16)
+def player_history(steamid: str, model: FightModel, slope: float, stamp: int) -> pd.DataFrame:
+    """Match-by-match numbers for a player from the database. `stamp` changes when matches are added."""
+    conn = database()
+    if conn is None:
+        return pd.DataFrame()
+    try:
+        matches = db.load_matches(conn, steamid=steamid)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        return pd.DataFrame()
+    return history(matches, steamid, model, slope)
+
+
+def history_stamp() -> int:
+    conn = database()
+    if conn is None:
+        return 0
+    try:
+        stamp = conn.execute("SELECT count(*), coalesce(max(parsed_at)::text, '') FROM matches").fetchone()
+        conn.commit()
+        return hash(stamp)
+    except Exception:
+        conn.rollback()
+        return 0
+
+
+def saved_setting(key: str) -> str | None:
+    conn = database()
+    if conn is None:
+        return None
+    try:
+        return db.get_setting(conn, key)
+    except Exception:
+        conn.rollback()
+        return None
+
+
+def save_setting(key: str, value: str) -> None:
+    conn = database()
+    if conn is not None:
+        db.set_setting(conn, key, value)
+
+
+def format_focus(value, column: str) -> str:
+    if value is None or pd.isna(value):
+        return "–"
+    return f"{value:.0%}" if column == "set_up_rate" else f"{value:.1f}" if isinstance(value, float) else str(value)
+
+
+def render_focus_banner(current: dict, past: pd.DataFrame, exclude: str) -> None:
+    key = saved_setting("focus")
+    if key not in FOCUS or not current:
+        return
+    label, column, lower_is_better = FOCUS[key]
+    others = past[past["match_id"] != exclude].tail(RECENT_MATCHES) if len(past) else past
+    value = current.get(column)
+    if value is None or others.empty or column not in others:
+        st.info(f"🎯 Your focus: **{label}**. This match: {format_focus(value, column)}.")
+        return
+    average = others[column].mean()
+    better = (value < average) if lower_is_better else (value > average)
+    verdict = "✅ better than" if better else "⚠️ worse than" if value != average else "level with"
+    st.info(f"🎯 Your focus: **{label}**. This match: **{format_focus(value, column)}**, {verdict} your last "
+            f"{len(others)} matches ({format_focus(average, column)}).")
+
+
+def focus_chart(past: pd.DataFrame, column: str, mode: str) -> alt.Chart:
+    palette = COLORS[mode]
+    data = past[["match_id", "map", column]].dropna().reset_index(drop=True)
+    data["match"] = [f"{i}. {map_label(m)}" for i, m in enumerate(data["map"], start=1)]
+    average = float(data[column].mean())
+    fmt = ".0%" if column == "set_up_rate" else ".0f"
+    bars = alt.Chart(data).mark_bar(color=palette["Your team"], cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+        x=alt.X("match:N", title=None, sort=data["match"].tolist(), axis=alt.Axis(labelAngle=0)),
+        y=alt.Y(f"{column}:Q", title=None, axis=alt.Axis(format=fmt, tickMinStep=1 if fmt == ".0f" else None)),
+        tooltip=[alt.Tooltip("match:N", title="Match"), alt.Tooltip(f"{column}:Q", title="Value", format=".2f" if fmt == ".0f" else fmt)],
+    )
+    rule = alt.Chart(pd.DataFrame({"avg": [average], "label": [f"Your average: {format_focus(average, column)}"]}))
+    line = rule.mark_rule(color=palette["text"], strokeDash=[5, 4]).encode(y="avg:Q")
+    text = rule.mark_text(align="right", dy=-6, x="width", color=palette["text"], fontSize=11).encode(y="avg:Q", text="label:N")
+    return (bars + line + text).properties(height=240)
+
+
 # ---------- pages ----------
 
 
@@ -734,7 +839,7 @@ def report_page() -> None:
     options = list(names)
     # A fixed key keeps the widget stable across reruns; preselect the last player reviewed if they're in this demo.
     if st.session_state.get("review_player") not in options:
-        remembered = st.session_state.get("steamid")
+        remembered = st.session_state.get("steamid") or saved_setting("me")
         st.session_state["review_player"] = next((label for label in options if names[label] == remembered), None)
     picked = st.selectbox(
         "Which player do you want to review?", options, key="review_player",
@@ -743,9 +848,16 @@ def report_page() -> None:
     if picked is None:
         st.info(f"Pick a player above to see their report for {map_label(match['map'])} ({scores['A']}–{scores['B']}).")
         return
-    st.session_state["steamid"] = names[picked]
+    steamid = names[picked]
+    st.session_state["steamid"] = steamid
+    if database() is not None and saved_setting("me") != steamid:
+        if st.button(f"⭐ This is me: always open my reports as {picked.split('  ·  ')[0]}"):
+            save_setting("me", steamid)
+            st.toast("Saved. Halftime will pick you automatically from now on.")
 
-    render_report(build_report(parsed, names[picked], pool, slope, fight_model))
+    past = player_history(steamid, fight_model, slope, history_stamp())
+    current = match_numbers(parsed, steamid, fight_model, slope)
+    render_report(build_report(parsed, steamid, pool, slope, fight_model), past, current)
 
 
 def habits_page() -> None:
@@ -778,7 +890,7 @@ def habits_page() -> None:
         f"{row['name']}  ({row['matches']} match{'es' if row['matches'] != 1 else ''})": sid for sid, row in counts.iterrows()
     }
     options = list(labels)
-    remembered = st.session_state.get("steamid")
+    remembered = st.session_state.get("steamid") or saved_setting("me")
     default = next((i for i, label in enumerate(options) if labels[label] == remembered), 0)
     picked = st.sidebar.selectbox("Which player are you?", options, index=default)
     st.session_state["steamid"] = labels[picked]
@@ -800,6 +912,7 @@ def habits_page() -> None:
         st.caption(f"{outdated} stored match{'es were' if outdated != 1 else ' was'} parsed before deaths were tracked; "
                    "re-add your replays from the sidebar to include them.")
     render_habit_scorecards(habits)
+    render_focus(matches, labels[picked], fight_model, equipment_slope(pool), mode)
 
     if habits.matches < MIN_MATCHES:
         st.info(f"Habits need at least {MIN_MATCHES} of your matches; you have {habits.matches}. Add more replays from the sidebar.")
@@ -843,6 +956,30 @@ def habits_page() -> None:
     with tabs[2]:
         if len(habits.calls):
             render_calls(habits.calls.sort_values("cost", ascending=False), with_match=True)
+
+
+def render_focus(matches: list, steamid: str, model: FightModel, slope: float, mode: str) -> None:
+    """Pick one habit to work on; see it match by match against your average."""
+    st.subheader("🎯 Your focus")
+    keys = list(FOCUS)
+    saved = saved_setting("focus")
+    choice = st.selectbox(
+        "Pick one habit to work on this week", keys, index=keys.index(saved) if saved in keys else None,
+        format_func=lambda k: FOCUS[k][0], placeholder="Choose a habit to track",
+    )
+    if choice is None:
+        st.caption("Working on one thing at a time is how habits change. Your choice shows on every match report.")
+        return
+    if choice != saved and database() is not None:
+        save_setting("focus", choice)
+    label, column, lower_is_better = FOCUS[choice]
+    past = history(matches, steamid, model, slope)
+    if past.empty or column not in past or past[column].dropna().empty:
+        st.write("No data for this habit yet. Re-add your replays from the sidebar.")
+        return
+    st.altair_chart(focus_chart(past, column, mode), width="stretch")
+    direction = "Lower" if lower_is_better else "Higher"
+    st.caption(f"{label}, match by match, oldest on the left. {direction} is better; the dashed line is your average.")
 
 
 def render_habit_scorecards(habits) -> None:
