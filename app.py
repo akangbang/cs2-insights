@@ -19,7 +19,7 @@ from cs2_insights import db
 from cs2_insights.demo import ParsedDemo, parse_demo
 from cs2_insights import fights
 from cs2_insights.demo import TICK_RATE
-from cs2_insights.fights import FightModel, fit_fight_model
+from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
 from cs2_insights.habits import MIN_MATCHES, build_habits
 from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
@@ -228,7 +228,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
 
-    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "🎯 Clutches", "💰 Buy calls", "📈 Economy"])
+    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "🎯 Clutches & openings", "💰 Buy calls", "📈 Economy"])
     with tabs[0]:
         render_deaths(report, mode)
     with tabs[1]:
@@ -764,6 +764,38 @@ def render_clutches(report: Report) -> None:
                     st.markdown(f"**Next time:** {CLUTCH_FIXES[c['verdict']]}")
                 watch_hint(c["tick"])
 
+    st.markdown("#### Opening duels")
+    od = report.openings
+    if od.empty:
+        st.write("You weren't in the first fight of any round.")
+        return
+    st.markdown(f"You were in the first fight of **{len(od)}** rounds and won **{int(od['won'].sum())}**. "
+                "Winning the opening duel puts your team 5v4; losing it puts you 4v5.")
+    st.dataframe(
+        pd.DataFrame({"round": od["round"], "side": od["side"], "where": od["place"].map(place_label),
+                      "result": od["won"].map({True: "✅ Won", False: "❌ Lost"}), "weapon": od["weapon"]}),
+        hide_index=True, width="stretch",
+        column_config={"round": "Round", "side": "Side", "where": "Where you were", "result": "Result", "weapon": "Weapon used"},
+    )
+
+
+def openings_chart(od: pd.DataFrame, mode: str) -> alt.Chart:
+    palette = COLORS[mode]
+    counts = (od.assign(where=od["place"].map(place_label), result=od["won"].map({True: "Won", False: "Lost"}))
+              .groupby(["where", "result"]).size().reset_index(name="duels"))
+    order = counts.groupby("where")["duels"].sum().sort_values(ascending=False).index.tolist()
+    counts["stack"] = counts["result"].map({"Won": 0, "Lost": 1})
+    bars = alt.Chart(counts).mark_bar(stroke=palette["surface"], strokeWidth=2).encode(
+        y=alt.Y("where:N", title=None, sort=order, axis=alt.Axis(labelOverlap=False, labelLimit=200)),
+        x=alt.X("duels:Q", title="Opening duels", stack="zero", axis=alt.Axis(tickMinStep=1)),
+        color=alt.Color("result:N", title=None, scale=alt.Scale(domain=["Won", "Lost"], range=[palette["good"], palette["critical"]]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        order="stack:Q",
+        tooltip=[alt.Tooltip("where:N", title="Where"), alt.Tooltip("result:N", title="Result"), alt.Tooltip("duels:Q", title="Duels")],
+    )
+    # One-layer chart: Streamlit drops some single-mark bar charts.
+    return alt.layer(bars.properties(height=alt.Step(30)))
+
 
 # ---------- progress ----------
 
@@ -1016,7 +1048,7 @@ def habits_page() -> None:
     names = {}
     for m in matches:
         names.update(m.player_rounds.drop_duplicates("steamid", keep="last").set_index("steamid")["name"].to_dict())
-    tabs = st.tabs(["📉 Avoidable deaths by match", "🤝 Coverage across matches", "💰 Every buy call"])
+    tabs = st.tabs(["📉 Avoidable deaths by match", "🤝 Coverage across matches", "🚪 Opening duels by callout", "💰 Every buy call"])
     with tabs[0]:
         if habits.fight_matches:
             st.altair_chart(avoidable_trend_chart(habits.deaths, matches, mode), width="stretch")
@@ -1031,6 +1063,8 @@ def habits_page() -> None:
         else:
             st.write("No teammate died near you in these matches.")
     with tabs[2]:
+        render_habit_openings(matches, labels[picked], mode)
+    with tabs[3]:
         if len(habits.calls):
             render_calls(habits.calls.sort_values("cost", ascending=False), with_match=True)
 
@@ -1057,6 +1091,35 @@ def render_focus(matches: list, steamid: str, model: FightModel, slope: float, m
     st.altair_chart(focus_chart(past, column, mode), width="stretch")
     direction = "Lower" if lower_is_better else "Higher"
     st.caption(f"{label}, match by match, oldest on the left. {direction} is better; the dashed line is your average.")
+
+
+def render_habit_openings(matches: list, steamid: str, mode: str) -> None:
+    """Where you take the first fight of a round, per map, and how often you win it."""
+    duels = [opening_duels(m.deaths, m.team_rounds, steamid).assign(map=map_label(m.match.iloc[0]["map"]))
+             for m in matches if len(m.deaths)]
+    duels = pd.concat(duels, ignore_index=True) if duels else pd.DataFrame()
+    if duels.empty:
+        st.write("No opening duels yet.")
+        return
+    maps = duels["map"].value_counts()
+    chosen = st.selectbox("Map", maps.index.tolist(), format_func=lambda m: f"{m} ({maps[m]} opening duels)")
+    on_map = duels[duels["map"] == chosen]
+    st.markdown(f"On {chosen} you took the first fight **{len(on_map)}** times and won **{int(on_map['won'].sum())}** "
+                f"({on_map['won'].mean():.0%}).")
+    st.altair_chart(openings_chart(on_map, mode), width="stretch")
+    spots = on_map.groupby("place")["won"].agg(["size", "sum"])
+    spots = spots[spots["size"] >= 2]
+    if len(spots):
+        rate = spots["sum"] / spots["size"]
+        best, worst = rate.idxmax(), rate.idxmin()
+        notes = []
+        if rate[best] >= 0.5:
+            notes.append(f"✅ Your best spot: **{place_label(best)}** (won {int(spots.at[best, 'sum'])} of {int(spots.at[best, 'size'])}).")
+        if rate[worst] < 0.5 and worst != best:
+            notes.append(f"⚠️ Rethink **{place_label(worst)}**: you lost {int(spots.at[worst, 'size'] - spots.at[worst, 'sum'])} "
+                         f"of {int(spots.at[worst, 'size'])} first fights there. Try another angle or wait for a teammate.")
+        st.markdown("  \n".join(notes))
+    st.caption("A callout needs a few duels before it means much; spots with only one duel aren't called out.")
 
 
 def render_habit_scorecards(habits) -> None:

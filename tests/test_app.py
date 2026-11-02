@@ -19,7 +19,7 @@ def test_report_renders_for_newest_replay_and_switches_player():
     assert not app.exception
     assert app.header[0].value.split(" · ")[1].startswith(("Win", "Loss", "Draw"))
     assert [m.label for m in app.metric][:4] == ["Rounds won", "Avoidable deaths", "Coverage", "Buy calls right"]
-    assert [t.label for t in app.tabs] == ["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "🎯 Clutches", "💰 Buy calls", "📈 Economy"]
+    assert [t.label for t in app.tabs] == ["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "🎯 Clutches & openings", "💰 Buy calls", "📈 Economy"]
     assert "Coverage grade" in [m.label for m in app.metric]
 
     first = app.header[0].value

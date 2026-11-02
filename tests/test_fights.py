@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from cs2_insights import fights
-from cs2_insights.fights import FightModel, clutch_win_chance, clutches, coverage, coverage_summary, fit_fight_model, judge_deaths
+from cs2_insights.fights import FightModel, clutch_win_chance, opening_duels, clutches, coverage, coverage_summary, fit_fight_model, judge_deaths
 
 MODEL = FightModel()
 
@@ -159,3 +159,17 @@ def test_a_ct_with_no_time_to_defuse_has_almost_no_chance():
     planted_late = clutch_win_chance(MODEL, 1, "CT", 37.0)  # 3 seconds left
     assert planted_late < 0.05 * open_round + 1e-9
     assert clutch_win_chance(MODEL, 1, "T", 37.0) > open_round  # the bomb helps T
+
+
+def test_opening_duels_are_the_first_kill_you_were_in():
+    deaths = pd.DataFrame([
+        _death(1, 100, "b1", "me", victim_team="B", killer_place="Ramp", victim_place="Hut"),  # you win round 1's opening
+        _death(1, 200, "me", "b2"),
+        _death(2, 100, "a2", "b1"),  # a teammate's opening, not yours
+        _death(2, 150, "me", "b1"),
+        _death(3, 90, "a2", "a3", killer_team="A"),  # a team kill doesn't count as the opening
+        _death(3, 100, "me", "b1", victim_place="Palace"),
+    ])
+    team_rounds = _team_rounds([1, 2, 3], [True, False, False])
+    od = opening_duels(deaths, team_rounds, "me")
+    assert od[["round", "won", "place", "side"]].values.tolist() == [[1, True, "Ramp", "CT"], [3, False, "Palace", "CT"]]
