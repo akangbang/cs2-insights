@@ -308,9 +308,14 @@ def watch_command(tick: int) -> str:
     return f"demo_gototick {max(int(tick) - WATCH_LEAD_SECONDS * TICK_RATE, 0)}"
 
 
+WATCH_HELP = "Open the demo in CS2, then paste this into the console (~) to jump to 5 seconds before the moment."
+
+
 def watch_hint(tick: int) -> None:
-    st.caption("Watch it: open the demo in CS2 and paste this into the console (~).")
-    st.code(watch_command(tick), language=None)
+    """One compact row: a label with the how-to on hover, and the command with a copy button."""
+    label, command = st.columns([1, 3], vertical_alignment="center")
+    label.caption("▶ Watch in CS2", help=WATCH_HELP)
+    command.code(watch_command(tick), language=None)
 
 
 def death_breakdown_chart(deaths: pd.DataFrame, mode: str) -> alt.Chart:
