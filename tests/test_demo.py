@@ -117,3 +117,14 @@ def test_parse_local_demo_fights():
     assert 0.02 < deaths["trade_seconds"].le(2).mean() < 0.4
     assert set(chances["mate"]) <= set(parsed.player_rounds["steamid"])
     assert chances["aim_angle"].between(0, 180).all() and (chances["distance_to_killer"] > 0).all()
+
+
+@pytest.mark.skipif(not LOCAL_DEMOS, reason="no local CS2 demos")
+def test_parse_local_demo_utility():
+    parsed = parse_demo(LOCAL_DEMOS[-1])
+    utility, blinds = parsed.utility, parsed.blinds
+    assert len(utility) == len(parsed.player_rounds)  # one row per player per round, zeros included
+    assert utility["flashes"].sum() > 0 and utility["smokes"].sum() > 0
+    assert (blinds["seconds"] >= 1).all() and (blinds["thrower"] != blinds["blinded"]).all()
+    assert utility["teammates_blinded"].sum() == blinds["teammate"].sum()
+    assert (parsed.deaths["unused_utility"] >= 0).all()

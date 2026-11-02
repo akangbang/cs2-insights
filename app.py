@@ -25,6 +25,7 @@ from cs2_insights.habits import MIN_MATCHES, build_habits
 from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
+from cs2_insights.utility import UNUSED_WORTH_MENTION
 from cs2_insights.report import (
     BUY_LABELS,
     DEATH_FIXES,
@@ -225,14 +226,16 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
 
-    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "💰 Buy calls", "📈 Economy"])
+    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "💰 Buy calls", "📈 Economy"])
     with tabs[0]:
         render_deaths(report, mode)
     with tabs[1]:
         render_coverage(report, mode)
     with tabs[2]:
-        render_buy_calls(report)
+        render_utility(report, mode)
     with tabs[3]:
+        render_buy_calls(report)
+    with tabs[4]:
         render_economy(report, mode)
     st.caption(
         f"Win chances come from Halftime's pool of {s['pool_rounds']:,} rounds. Buy calls are graded by playing both "
@@ -686,6 +689,50 @@ def render_moment_map(death: pd.Series, report: Report) -> None:
     if chart is not None:
         st.altair_chart(chart, width="content")
         st.caption("Top-down view at that moment. Lines show where each teammate was aiming; the dashed line is the fight. Walls aren't drawn.")
+
+
+def render_utility(report: Report, mode: str) -> None:
+    u = report.utility
+    if not u:
+        st.info("This demo was stored before utility was tracked. Re-add it (Your habits → Add all replays) to see it.")
+        return
+    palette = COLORS[mode]
+    cols = st.columns(4)
+    with cols[0].container(border=True):
+        st.metric("Grenades thrown", u["grenades"], f"{u['grenades'] - u['match_grenades']:+.0f} vs match average")
+        st.caption(f"{u['thrown']['flashes']} flashes · {u['thrown']['smokes']} smokes · {u['thrown']['hes']} HEs · {u['thrown']['molotovs']} molotovs")
+    with cols[1].container(border=True):
+        st.metric("Enemies flashed", u["enemies_blinded"], help="Blinded for at least a second.")
+        st.caption(f"{u['per_flash']:.1f} enemies per flash (match average {u['match_per_flash']:.1f}), "
+                   f"{u['enemy_blind_seconds']:.0f}s of blindness in total.")
+    with cols[2].container(border=True):
+        st.metric("Teammates flashed", u["teammates_blinded"], f"{u['teammates_blinded'] - u['match_teammates_blinded']:+.1f} vs match average",
+                  delta_color="inverse", help="Your flashes that blinded a teammate for at least a second.")
+        st.caption("Every one is a teammate who can't shoot back for a moment.")
+    with cols[3].container(border=True):
+        st.metric("Grenade damage", u["utility_damage"], f"{u['utility_damage'] - u['match_utility_damage']:+.0f} vs match average")
+        st.caption("HE and molotov damage to enemies.")
+
+    flashes = report.team_flashes
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### ⚠️ Flashes that blinded your team")
+        if flashes.empty:
+            st.write("None. Clean flashes.")
+        for f in flashes.itertuples():
+            st.markdown(f"- Round {f.round}: blinded **{report.names.get(f.blinded, 'a teammate')}** for {f.seconds:.1f}s · `{watch_command(f.tick)}`")
+        if len(flashes):
+            st.caption("Next time: say \"flashing\" before you throw, and throw over your teammate's head, not past his face.")
+    with right:
+        st.markdown("#### 💸 Died holding grenades")
+        unused = report.deaths[report.deaths["unused_utility"] >= UNUSED_WORTH_MENTION] if len(report.deaths) and "unused_utility" in report.deaths else pd.DataFrame()
+        if unused.empty:
+            st.write("You used your utility before your fights.")
+        for d in unused.itertuples():
+            st.markdown(f"- Round {d.round} · {clock(d.round_seconds)} · {place_label(d.victim_place)}: died with **${d.unused_utility:,}** of grenades unused")
+        if len(unused):
+            st.caption(f"${int(unused['unused_utility'].sum()):,} of grenades in total. Throw a flash or molotov before taking the fight, "
+                       "or drop them to a teammate.")
 
 
 # ---------- progress ----------
