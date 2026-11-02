@@ -681,7 +681,7 @@ def moment_map(death: pd.Series, chances: pd.DataFrame, names: dict, me: str, mo
     x_scale, y_scale = alt.Scale(domain=[cx - half, cx + half]), alt.Scale(domain=[cy - half, cy + half])
     color = alt.Color("role:N", title=None, scale=alt.Scale(
         domain=MOMENT_ROLES, range=[palette["Your team"], palette["neutral"], palette["critical"], palette["Opponent"]]),
-        legend=alt.Legend(orient="bottom", direction="horizontal", columns=2))
+        legend=None)  # explained once in the caption under the map
     fight = alt.Chart(pd.DataFrame([{"x": death["killer_x"], "y": death["killer_y"], "x2": death["victim_x"], "y2": death["victim_y"]}])).mark_rule(
         strokeDash=[5, 4], strokeWidth=1.5, color=palette["text"], opacity=0.6
     ).encode(x=alt.X("x:Q", scale=x_scale, axis=None), y=alt.Y("y:Q", scale=y_scale, axis=None), x2="x2:Q", y2="y2:Q")
@@ -697,14 +697,15 @@ def moment_map(death: pd.Series, chances: pd.DataFrame, names: dict, me: str, mo
     labelled = points[points["role"] != "Teammate"]
     layers.append(alt.Chart(labelled).mark_text(align="left", dx=9, dy=-7, fontSize=11, color=palette["text"]).encode(
         x=alt.X("x:Q", scale=x_scale), y=alt.Y("y:Q", scale=y_scale), text="label:N"))
-    return alt.layer(*layers).properties(width=270, height=270).configure_view(stroke=palette["band"])
+    return alt.layer(*layers).properties(width=230, height=230).configure_view(stroke=palette["band"])
 
 
 def render_moment_map(death: pd.Series, report: Report) -> None:
     chart = moment_map(death, report.trade_chances, report.names, report.steamid, theme_mode())
     if chart is not None:
         st.altair_chart(chart, width="content")
-        st.caption("Top-down view at that moment. Lines show where each teammate was aiming; the dashed line is the fight. Walls aren't drawn.")
+        st.caption("Blue = you · grey = teammates (lines show where they aimed) · red ◆ = teammate who died · "
+                   "orange ▲ = killer · dashed line = the fight. Seen from above; walls aren't drawn.")
 
 
 def render_utility(report: Report, mode: str) -> None:

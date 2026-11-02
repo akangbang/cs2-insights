@@ -11,7 +11,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Match report summary](docs/screenshots/report.png)
 
-**Every death, explained.** Why it was avoidable, what it cost your team's chance to win the round, what to do next time, and a top-down moment map of where everyone stood and aimed.
+**Every death, explained.** Why it was avoidable, what it cost your team's chance to win the round, what to do next time, and a compact top-down moment map of where everyone stood and aimed.
 
 ![Death breakdown and an avoidable death with its moment map](docs/screenshots/deaths.png)
 
