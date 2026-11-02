@@ -315,7 +315,7 @@ def render_round(report: Report, number: int) -> None:
     r = report.rounds.set_index("round").loc[number]
     with st.container(border=True):
         st.markdown(f"**Round {number} · {'✅ Won' if r['won'] else '❌ Lost'}** · score before {r['score']} · {r['side']} · "
-                    f"your {BUY_LABELS[r['your_buy']].lower()} (\${r['your_equip']:,}) vs their {BUY_LABELS[r['their_buy']].lower()} (\${r['their_equip']:,})")
+                    f"your {BUY_LABELS[r['your_buy']].lower()} (\\${r['your_equip']:,}) vs their {BUY_LABELS[r['their_buy']].lower()} (\\${r['their_equip']:,})")
         # (Two "$" in one markdown line would render as a maths formula, hence the escapes.)
         calls = report.calls[report.calls["round"] == number] if len(report.calls) else report.calls
         for _, call in calls.iterrows():
