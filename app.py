@@ -228,19 +228,26 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
 
-    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "🎯 Clutches & openings", "💰 Buy calls", "📈 Economy"])
-    with tabs[0]:
-        render_deaths(report, mode)
-    with tabs[1]:
-        render_coverage(report, mode)
-    with tabs[2]:
-        render_utility(report, mode)
-    with tabs[3]:
-        render_clutches(report)
-    with tabs[4]:
-        render_buy_calls(report)
-    with tabs[5]:
-        render_economy(report, mode)
+    # Three groups, each with its own sub-tabs, so the page doesn't open on a wall of six choices.
+    fights_tab, teamplay_tab, economy_tab = st.tabs(["⚔️ Fights", "🤝 Teamplay", "💰 Economy"])
+    with fights_tab:
+        deaths_tab, clutch_tab = st.tabs(["💀 Your deaths", "🎯 Clutches & openings"])
+        with deaths_tab:
+            render_deaths(report, mode)
+        with clutch_tab:
+            render_clutches(report)
+    with teamplay_tab:
+        cover_tab, utility_tab = st.tabs(["🤝 Covering teammates", "🧨 Utility"])
+        with cover_tab:
+            render_coverage(report, mode)
+        with utility_tab:
+            render_utility(report, mode)
+    with economy_tab:
+        calls_tab, rounds_tab = st.tabs(["💰 Buy calls", "📈 Round by round"])
+        with calls_tab:
+            render_buy_calls(report)
+        with rounds_tab:
+            render_economy(report, mode)
     st.caption(
         f"Win chances come from Halftime's pool of {s['pool_rounds']:,} rounds. Buy calls are graded by playing both "
         "choices forward a few rounds with CS2's money rules; deaths and coverage from where everyone stood and aimed. "

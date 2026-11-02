@@ -38,7 +38,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 ![Opening duels by callout](docs/screenshots/openings.png)
 
 ## Features
-- **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Press **This is me** once and Halftime opens on you from then on.
+- **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Press **This is me** once and Halftime opens on you from then on. The details sit in three tabs: **Fights** (deaths, clutches & openings), **Teamplay** (coverage, utility) and **Economy** (buy calls, round by round).
   - **Your deaths:** each one labelled *traded*, *avoidable* (re-peeked after a kill, pushed with nobody close enough to trade, died with gear in a lost round), *teammates didn't trade* or *lost a duel*, with the reasons, the cost to your team's round win chance, a moment map, and a console command to jump to it in the demo.
   - **Coverage grade (A–F):** how often you were close enough to trade a teammate and aiming at his killer, graded against every player in the pool, with moments to repeat and to fix.
   - **Utility:** grenades thrown, enemies flashed per flash, teammates flashed, grenade damage, and deaths with unused grenades, against the match average.
@@ -95,7 +95,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | Path | What it does |
 |---|---|
 | `app.py` | Streamlit app: match report, habits, legal pages |
-| `src/cs2_insights/demo.py` | Demo parsing: rounds, teams, players, deaths and positions |
+| `src/cs2_insights/demo.py` | Demo parsing: rounds, teams, players, deaths, positions, grenades and flashes |
 | `src/cs2_insights/fights.py` | Death verdicts, trade chance, coverage grade, clutches and opening duels |
 | `src/cs2_insights/utility.py` | Grenade and flash summary per match |
 | `src/cs2_insights/progress.py` | Match-by-match history for progress and the weekly focus |
