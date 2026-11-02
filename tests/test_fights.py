@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from cs2_insights import fights
-from cs2_insights.fights import FightModel, coverage, coverage_summary, fit_fight_model, judge_deaths
+from cs2_insights.fights import FightModel, clutch_win_chance, clutches, coverage, coverage_summary, fit_fight_model, judge_deaths
 
 MODEL = FightModel()
 
@@ -124,3 +124,38 @@ def test_fit_recovers_trade_weights_and_falls_back_when_small():
     fitted = fit_fight_model(deaths, chances, pd.DataFrame()).trade_weights
     assert fitted == pytest.approx((1.0, -3.0, -4.0), abs=0.4)
     assert fit_fight_model(deaths, chances.iloc[:50], pd.DataFrame()) == FightModel()
+
+
+def _clutch_round(final_victim=None, a_won=False, next_equip=5_000):
+    """Round 1: team A loses a1-a4 one by one, leaving a5 against b1 and b2. Round 2: both teams buy."""
+    deaths = [_death(1, 100 + i, f"a{i}", "b1", team_alive=6 - i, enemies_alive=5) for i in range(1, 5)]
+    deaths.append(_death(1, 110, "b3", "a5", victim_team="B", team_alive=5, enemies_alive=1))
+    deaths.append(_death(1, 120, "b4", "a5", victim_team="B", team_alive=4, enemies_alive=1))
+    deaths.append(_death(1, 130, "b5", "a5", victim_team="B", team_alive=3, enemies_alive=1))
+    if final_victim:
+        deaths.append(_death(1, 200, final_victim, "b1", team_alive=1, enemies_alive=2, victim_equip=4_700))
+    players = pd.DataFrame([{"round": r, "steamid": f"{t}{i}", "team": t, "equip_value": 4_700} for r in (1, 2) for t in "ab" for i in range(1, 6)])
+    players["team"] = players["team"].str.upper()
+    team_rounds = pd.DataFrame([
+        {"round": r, "team": t, "side": "CT" if t == "A" else "T", "won": (a_won if t == "A" else not a_won),
+         "players": 5, "equip_value": next_equip * 5 if r == 2 and t == "A" else 25_000}
+        for r in (1, 2) for t in "AB"
+    ])
+    return pd.DataFrame(deaths), players, team_rounds
+
+
+def test_clutch_is_found_with_outcome_and_verdict():
+    won = clutches(*_clutch_round(a_won=True), MODEL)
+    assert won[["player", "enemies", "outcome", "verdict"]].values.tolist() == [["a5", 5, "Won", fights.CLUTCH_WON]]
+    died = clutches(*_clutch_round(final_victim="a5"), MODEL).iloc[0]
+    assert died["outcome"] == "Died" and died["gear"] == 4_700
+    assert died["save_value"] > 0  # round 2 is in the same half, so the rifle was worth something
+    saved = clutches(*_clutch_round(), MODEL).iloc[0]
+    assert saved["outcome"] == "Saved" and saved["verdict"] in (fights.CLUTCH_SAVED, fights.CLUTCH_SHOULD_PLAY)
+
+
+def test_a_ct_with_no_time_to_defuse_has_almost_no_chance():
+    open_round = clutch_win_chance(MODEL, 1, "CT", None)
+    planted_late = clutch_win_chance(MODEL, 1, "CT", 37.0)  # 3 seconds left
+    assert planted_late < 0.05 * open_round + 1e-9
+    assert clutch_win_chance(MODEL, 1, "T", 37.0) > open_round  # the bomb helps T

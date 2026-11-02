@@ -293,7 +293,8 @@ def clutches(deaths: pd.DataFrame, player_rounds: pd.DataFrame, team_rounds: pd.
             outcome = "Won" if won else "Died" if len(later) else "Saved"
             gear = int(later["victim_equip"].iat[0]) if len(later) else int(equip.get((number, player), 0))
             side = teams.at[(number, team), "side"]
-            p = clutch_win_chance(model, enemies, side, d.plant_seconds)
+            plant_seconds = getattr(d, "plant_seconds", None)  # missing on matches parsed before version 3
+            p = clutch_win_chance(model, enemies, side, plant_seconds)
 
             save_value = 0.0
             nxt, their_next = (number + 1, team), (number + 1, other)
@@ -310,7 +311,7 @@ def clutches(deaths: pd.DataFrame, player_rounds: pd.DataFrame, team_rounds: pd.
             else:
                 verdict = CLUTCH_SHOULD_PLAY if p > save_value + CLUTCH_MARGIN else CLUTCH_SAVED
             rows.append({"round": int(number), "tick": int(d.tick), "player": player, "team": team, "side": side, "enemies": enemies,
-                         "plant_seconds": d.plant_seconds, "outcome": outcome, "gear": gear, "win_chance": round(p, 3),
+                         "plant_seconds": plant_seconds, "outcome": outcome, "gear": gear, "win_chance": round(p, 3),
                          "save_value": round(float(save_value), 3), "verdict": verdict})
     return pd.DataFrame(rows, columns=columns)
 

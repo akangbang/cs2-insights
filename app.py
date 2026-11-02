@@ -27,6 +27,8 @@ from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
 from cs2_insights.utility import UNUSED_WORTH_MENTION
 from cs2_insights.report import (
+    CLUTCH_FIXES,
+    clutch_reasons,
     BUY_LABELS,
     DEATH_FIXES,
     DEATH_GROUPS,
@@ -226,7 +228,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
 
-    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "💰 Buy calls", "📈 Economy"])
+    tabs = st.tabs(["💀 Your deaths", "🤝 Covering teammates", "🧨 Utility", "🎯 Clutches", "💰 Buy calls", "📈 Economy"])
     with tabs[0]:
         render_deaths(report, mode)
     with tabs[1]:
@@ -234,8 +236,10 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     with tabs[2]:
         render_utility(report, mode)
     with tabs[3]:
-        render_buy_calls(report)
+        render_clutches(report)
     with tabs[4]:
+        render_buy_calls(report)
+    with tabs[5]:
         render_economy(report, mode)
     st.caption(
         f"Win chances come from Halftime's pool of {s['pool_rounds']:,} rounds. Buy calls are graded by playing both "
@@ -733,6 +737,32 @@ def render_utility(report: Report, mode: str) -> None:
         if len(unused):
             st.caption(f"${int(unused['unused_utility'].sum()):,} of grenades in total. Throw a flash or molotov before taking the fight, "
                        "or drop them to a teammate.")
+
+
+CLUTCH_ICONS = {
+    fights.CLUTCH_WON: "🏆", fights.CLUTCH_PLAYED: "✅", fights.CLUTCH_SAVED: "✅",
+    fights.CLUTCH_SHOULD_SAVE: "⚠️", fights.CLUTCH_SHOULD_PLAY: "⚠️", fights.CLUTCH_CLOSE: "➖",
+}
+
+
+def render_clutches(report: Report) -> None:
+    clutch = report.clutches
+    st.markdown("#### Clutches: you, alone")
+    st.caption("Every round where you were your team's last player alive, and whether fighting or saving was right. "
+               "Fighting is right when your chance to win the round beats what your gear is worth next round.")
+    if clutch.empty:
+        st.write("You were never your team's last player alive this match.")
+    else:
+        won = int((clutch["outcome"] == "Won").sum())
+        wrong = int(clutch["verdict"].isin([fights.CLUTCH_SHOULD_SAVE, fights.CLUTCH_SHOULD_PLAY]).sum())
+        st.markdown(f"**{won}** of **{len(clutch)}** clutches won · **{wrong}** fight-or-save mistakes")
+        for _, c in clutch.iterrows():
+            with st.container(border=True):
+                st.markdown(f"{CLUTCH_ICONS[c['verdict']]} **Round {c['round']} · 1v{int(c['enemies'])}** — {c['verdict']}")
+                st.markdown("\n".join(f"- {reason}" for reason in clutch_reasons(c)))
+                if c["verdict"] in CLUTCH_FIXES:
+                    st.markdown(f"**Next time:** {CLUTCH_FIXES[c['verdict']]}")
+                watch_hint(c["tick"])
 
 
 # ---------- progress ----------
