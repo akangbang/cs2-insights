@@ -33,7 +33,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Clutches tab](docs/screenshots/clutches.png)
 
-**Your habits and your focus.** The habits that cost the most rounds, ranked, and one habit you've chosen to work on, tracked match by match.
+**Your habits and your focus.** The habits that cost the most rounds, a short checklist for your next match, and one habit you've chosen to work on, tracked match by match.
 
 ![Habits page with a weekly focus](docs/screenshots/habits.png)
 
@@ -50,6 +50,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
 - **Your habits.** Patterns across all your stored matches, ranked by rounds lost per match, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
+  - **Before your next match:** your top habits as a short checklist of actions, with your focus, that you can tick off or save as a text file for a second screen.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.

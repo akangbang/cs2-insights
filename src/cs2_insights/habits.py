@@ -26,6 +26,11 @@ GERUND = {"save": "saving", "force": "forcing"}
 TRADED_MARGIN = 0.03
 # An avoidable-death habit needs at least this many examples.
 MIN_DEATHS_FOR_HABIT = 2
+DEATH_TIPS = {
+    fights.REPEEK: "After a kill, move: fall back or swing a different angle.",
+    fights.ALONE: "Don't clear the next angle until a teammate is close enough to trade you.",
+    fights.SHOULD_SAVE: "When the round is lost, hide and keep your gun.",
+}
 DEATH_HABITS = {
     fights.REPEEK: (
         "You re-peek after getting a kill",
@@ -51,6 +56,7 @@ class Habit:
     detail: str
     cost: float  # expected rounds lost per match
     kind: str = "bad"  # "bad" (fix it) or "good" (keep it)
+    tip: str = ""  # one line to remember during the next match
 
 
 @dataclass
@@ -159,6 +165,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                 f"would have won about {group['cost'].sum():.1f} more rounds across {played} matches. "
                 + _why(made, situation),
                 group["cost"].sum() / played,
+                tip=_buy_tip(made, situation),
             )
         )
 
@@ -174,6 +181,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                     f"equipment should win about {split['expected'].sum():.1f}. You were the one buying in {mine_count}. "
                     "Call the buy before the round: all in or all save.",
                     shortfall / played,
+                    tip="Call the buy before every round: everyone buys or everyone saves.",
                 )
             )
 
@@ -187,6 +195,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                     f"left (${sum(unspent) / len(unspent):,.0f} on average). Money resets at half-time: buy armour, "
                     "utility or a better gun, or drop for a teammate.",
                     0.0,  # not measured in rounds; listed after the habits that are
+                    tip="On the last round of each half, spend everything or drop it to a teammate.",
                 )
             )
 
@@ -211,7 +220,8 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
         group = deaths[deaths["label"] == label]
         if len(group) >= MIN_DEATHS_FOR_HABIT:
             detail = template.format(n=len(group), m=m, per=len(group) / m, lost=fights.LOST_CAUSE, gear=int(group["victim_equip"].sum()))
-            habits.fixes.append(Habit(title, detail + f" These deaths cost about {group['cost'].sum():.1f} rounds.", group["cost"].sum() / m))
+            habits.fixes.append(Habit(title, detail + f" These deaths cost about {group['cost'].sum():.1f} rounds.", group["cost"].sum() / m,
+                                      tip=DEATH_TIPS[label]))
 
     if len(cover) >= fights.MIN_COVERAGE_CHANCES:
         pool_score = float(setup_scores(pool_chances, model).mean()) if len(pool_chances) else 0.0
@@ -230,7 +240,8 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
                    if facing_away >= in_range.sum() / 2 else
                    " Most of the gap is distance: play close enough to your teammates (under 900 units) to trade them.")
             cost = max(pool_score - score, 0) * len(cover) * float(cover["cost"].mean()) / m
-            habits.fixes.append(Habit(f"You're rarely set up to trade teammates (coverage {habits.coverage_grade})", detail + tip, cost))
+            habits.fixes.append(Habit(f"You're rarely set up to trade teammates (coverage {habits.coverage_grade})", detail + tip, cost,
+                                      tip="When a teammate fights near you, stay within 900 units and aim where his killer will be."))
         elif habits.coverage_grade in ("A", "B"):
             habits.strengths.append(Habit(f"You cover your teammates well (coverage {habits.coverage_grade})", detail, 0.0, "good"))
 
@@ -243,6 +254,21 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
             0.0, "good",
         ))
     habits.fixes.sort(key=lambda h: h.cost, reverse=True)
+
+
+def _buy_tip(made: str, situation: str) -> str:
+    if made == SAVE and situation == "after a lost pistol":
+        return "After a lost pistol, force against their SMGs instead of saving."
+    if made == SAVE and situation == "last round":
+        return "On the last round of a half, buy everything you can."
+    if made == SAVE:
+        return "Against a weak buy, force: saving buys you little next round."
+    return "Against a full buy without the money to match it, save for a full buy next round."
+
+
+def checklist(habits: Habits, n: int = 3) -> list[str]:
+    """The top habits as one-line actions for the next match."""
+    return [h.tip for h in habits.fixes if h.tip][:n]
 
 
 def _why(made: str, situation: str) -> str:

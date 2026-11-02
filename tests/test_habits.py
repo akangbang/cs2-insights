@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from cs2_insights.habits import MIN_MATCHES, build_habits
+from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
 from tests.test_grade import ECO, FULL, _team_rounds
 from cs2_insights.demo import ParsedDemo
 
@@ -48,3 +48,10 @@ def test_too_few_matches_gives_no_habits():
     assert habits.matches == 1 and habits.fixes == []
     with pytest.raises(ValueError):
         build_habits([_match("m0", SAVE_AFTER_PISTOL)], "nobody")
+
+
+def test_checklist_turns_top_habits_into_actions():
+    habits = build_habits([_match(f"m{i}", SAVE_AFTER_PISTOL) for i in range(MIN_MATCHES)], ME)
+    items = checklist(habits)
+    assert items[0] == "After a lost pistol, force against their SMGs instead of saving."
+    assert len(items) <= 3 and all(items)

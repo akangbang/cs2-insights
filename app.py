@@ -21,7 +21,7 @@ from cs2_insights import fights
 from cs2_insights.demo import TICK_RATE
 from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
-from cs2_insights.habits import MIN_MATCHES, build_habits
+from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
 from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
@@ -1143,6 +1143,7 @@ def habits_page() -> None:
         st.caption(f"{outdated} stored match{'es were' if outdated != 1 else ' was'} parsed before deaths were tracked; "
                    "re-add your replays from the sidebar to include them.")
     render_habit_scorecards(habits)
+    render_checklist(habits)
     render_focus(matches, labels[picked], fight_model, equipment_slope(pool), mode)
 
     if habits.matches < MIN_MATCHES:
@@ -1189,6 +1190,23 @@ def habits_page() -> None:
     with tabs[3]:
         if len(habits.calls):
             render_calls(habits.calls.sort_values("cost", ascending=False), with_match=True)
+
+
+def render_checklist(habits) -> None:
+    """Your top habits as a short list to keep in mind (or open on a second screen) next match."""
+    items = checklist(habits)
+    focus = FOCUS.get(saved_setting("focus") or "")
+    if not items and not focus:
+        return
+    with st.container(border=True):
+        st.markdown("#### 📋 Before your next match")
+        if focus:
+            st.markdown(f"🎯 **This week's focus: {focus[0].lower()}.**")
+        for i, item in enumerate(items):
+            st.checkbox(item, key=f"checklist_{i}")
+        text = "Halftime: before your next match\n" + (f"Focus: {focus[0]}\n" if focus else "") + "".join(f"[ ] {i}\n" for i in items)
+        st.download_button("Save as a text file", text, file_name="halftime-checklist.txt", mime="text/plain",
+                           help="Keep it open on a second screen while you play.")
 
 
 def render_focus(matches: list, steamid: str, model: FightModel, slope: float, mode: str) -> None:
