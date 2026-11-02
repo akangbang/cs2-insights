@@ -93,7 +93,7 @@ def test_fights_round_trip_and_parser_version(clean_conn):
         "victim_team": "B", "killer_team": "A", "weapon": "ak47", "headshot": True, "victim_place": "Ramp",
         "killer_place": "Ramp", "victim_equip": 3_000, "victim_blind": False, "victim_speed": 120.0, "victim_x": 1.0,
         "victim_y": 2.0, "killer_x": 3.0, "killer_y": 4.0, "team_alive": 1, "enemies_alive": 1, "bomb_planted": False,
-        "traded_by": None, "trade_seconds": None,
+        "traded_by": None, "trade_seconds": None, "plant_seconds": None, "unused_utility": 200,
     }])
     parsed.trade_chances = pd.DataFrame([{
         "match_id": MATCH_ID, "round": 1, "tick": 15, "victim": "pytest_2", "mate": "pytest_1", "distance_to_killer": 400.0,
