@@ -219,6 +219,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     if current:
         render_focus_banner(current, past, current["match_id"])
     render_scorecards(report, past, current["match_id"] if current else None)
+    render_timeline(report, mode)
 
     st.subheader("Top moments")
     if not report.moments:
@@ -253,6 +254,86 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         "choices forward a few rounds with CS2's money rules; deaths and coverage from where everyone stood and aimed. "
         "Early beta: the pool is still small, so treat the numbers as a guide."
     )
+
+
+def timeline_data(report: Report) -> pd.DataFrame:
+    """One row per round: result plus icons for what happened to you in it."""
+    deaths = report.deaths
+    avoidable = set(deaths.loc[deaths["label"].isin(fights.AVOIDABLE), "round"]) if len(deaths) else set()
+    died = set(deaths["round"]) if len(deaths) else set()
+    calls = report.calls
+    wrong = set(calls.loc[calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE]), "round"]) if len(calls) else set()
+    clutches_won = set(report.clutches.loc[report.clutches["outcome"] == "Won", "round"]) if len(report.clutches) else set()
+    rows = []
+    for r in report.rounds.itertuples():
+        icons, notes = [], []
+        if r.round in avoidable:
+            icons.append("⚠️")
+            notes.append(deaths.loc[(deaths["round"] == r.round) & deaths["label"].isin(fights.AVOIDABLE), "label"].iat[0])
+        elif r.round in died:
+            icons.append("💀")
+            notes.append(deaths.loc[deaths["round"] == r.round, "label"].iat[0])
+        if r.round in wrong:
+            icons.append("💰")
+            notes.append(calls.loc[calls["round"] == r.round, "grade"].iat[0])
+        if r.round in clutches_won:
+            icons.append("🏆")
+            notes.append("Won a clutch")
+        rows.append({"round": int(r.round), "result": "Won" if r.won else "Lost", "icons": "".join(icons),
+                     "notes": "; ".join(notes) or "Nothing to flag"})
+    return pd.DataFrame(rows)
+
+
+def timeline_chart(data: pd.DataFrame, mode: str) -> alt.Chart:
+    palette = COLORS[mode]
+    pick = alt.selection_point(name="pick", fields=["round"], on="click", empty=False)
+    x = alt.X("round:O", title=None, axis=alt.Axis(labelAngle=0, ticks=False, domain=False, labelPadding=6))
+    tiles = alt.Chart(data).mark_rect(stroke=palette["surface"], strokeWidth=2, cornerRadius=4, cursor="pointer").encode(
+        x=x,
+        color=alt.Color("result:N", title=None, scale=alt.Scale(domain=["Won", "Lost"], range=[palette["good"], palette["critical"]]),
+                        legend=None),  # explained in the caption
+        opacity=alt.condition(pick, alt.value(1.0), alt.value(0.8)),
+        tooltip=[alt.Tooltip("round:O", title="Round"), alt.Tooltip("result:N", title="Result"), alt.Tooltip("notes:N", title="What happened")],
+    ).add_params(pick)
+    icons = alt.Chart(data).mark_text(fontSize=15, baseline="middle").encode(x=x, text="icons:N")
+    return alt.layer(tiles, icons).properties(height=70)
+
+
+def render_timeline(report: Report, mode: str) -> None:
+    data = timeline_data(report)
+    st.markdown("#### Round by round")
+    event = st.altair_chart(timeline_chart(data, mode), width="stretch", on_select="rerun", key="timeline")
+    st.caption("Green = round won, red = round lost · ⚠️ avoidable death · 💀 other death · 💰 wrong buy call · 🏆 clutch won. "
+               "Click a round to see what happened.")
+    picked = (event.selection.get("pick") or [{}])[0].get("round") if event and event.selection else None
+    if picked is not None:
+        render_round(report, int(picked))
+
+
+def render_round(report: Report, number: int) -> None:
+    """Everything that happened to you in one round, in one card."""
+    r = report.rounds.set_index("round").loc[number]
+    with st.container(border=True):
+        st.markdown(f"**Round {number} · {'✅ Won' if r['won'] else '❌ Lost'}** · score before {r['score']} · {r['side']} · "
+                    f"your {BUY_LABELS[r['your_buy']].lower()} (\${r['your_equip']:,}) vs their {BUY_LABELS[r['their_buy']].lower()} (\${r['their_equip']:,})")
+        # (Two "$" in one markdown line would render as a maths formula, hence the escapes.)
+        calls = report.calls[report.calls["round"] == number] if len(report.calls) else report.calls
+        for _, call in calls.iterrows():
+            st.markdown(f"💰 **Buy call: {call['grade']}.** {call_detail(call)}")
+        openings = report.openings[report.openings["round"] == number] if len(report.openings) else report.openings
+        for o in openings.itertuples():
+            st.markdown(f"🚪 **Opening duel {'won' if o.won else 'lost'}** at {place_label(o.place)} ({o.weapon}).")
+        flashes = report.team_flashes[report.team_flashes["round"] == number] if len(report.team_flashes) else report.team_flashes
+        for f in flashes.itertuples():
+            st.markdown(f"🧨 Your flash blinded **{report.names.get(f.blinded, 'a teammate')}** for {f.seconds:.1f}s.")
+        clutch = report.clutches[report.clutches["round"] == number] if len(report.clutches) else report.clutches
+        for _, c in clutch.iterrows():
+            st.markdown(f"{CLUTCH_ICONS[c['verdict']]} **1v{int(c['enemies'])}: {c['verdict']}.** " + " ".join(clutch_reasons(c)))
+        deaths = report.deaths[report.deaths["round"] == number] if len(report.deaths) else report.deaths
+        if deaths.empty:
+            st.markdown("🛡️ You survived the round.")
+        for _, death in deaths.iterrows():
+            death_card(death, report)
 
 
 def theme_mode() -> str:
