@@ -26,8 +26,13 @@ PLAYER_ROUND_COLUMNS = [
 DEATH_COLUMNS = [
     "match_id", "round", "tick", "round_seconds", "victim", "killer", "victim_team", "killer_team", "weapon", "headshot",
     "victim_place", "killer_place", "victim_equip", "victim_blind", "victim_speed", "victim_x", "victim_y", "killer_x",
-    "killer_y", "team_alive", "enemies_alive", "bomb_planted", "traded_by", "trade_seconds",
+    "killer_y", "team_alive", "enemies_alive", "bomb_planted", "traded_by", "trade_seconds", "plant_seconds", "unused_utility",
 ]
+UTILITY_COLUMNS = [
+    "match_id", "round", "steamid", "flashes", "smokes", "hes", "molotovs", "enemies_blinded", "enemy_blind_seconds",
+    "teammates_blinded", "utility_damage",
+]
+BLIND_COLUMNS = ["match_id", "round", "tick", "thrower", "blinded", "seconds", "teammate"]
 TRADE_CHANCE_COLUMNS = [
     "match_id", "round", "tick", "victim", "mate", "distance_to_killer", "distance_to_victim", "aim_angle",
     "mate_x", "mate_y", "mate_yaw",
@@ -88,6 +93,10 @@ def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
             _insert(cur, "deaths", parsed.deaths, DEATH_COLUMNS)
         if len(parsed.trade_chances):
             _insert(cur, "trade_chances", parsed.trade_chances, TRADE_CHANCE_COLUMNS)
+        if len(parsed.utility):
+            _insert(cur, "player_utility", parsed.utility.drop_duplicates(["round", "steamid"]), UTILITY_COLUMNS)
+        if len(parsed.blinds):
+            _insert(cur, "blinds", parsed.blinds.drop_duplicates(["tick", "thrower", "blinded"]), BLIND_COLUMNS)
 
 
 def pool_team_rounds(conn: psycopg.Connection, exclude_match_id: str | None = None) -> pd.DataFrame:
@@ -133,6 +142,12 @@ def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[P
         conn.execute(f"SELECT {', '.join(TRADE_CHANCE_COLUMNS)} FROM trade_chances {where}", params).fetchall(),
         columns=TRADE_CHANCE_COLUMNS,
     )
+    utility = pd.DataFrame(
+        conn.execute(f"SELECT {', '.join(UTILITY_COLUMNS)} FROM player_utility {where}", params).fetchall(), columns=UTILITY_COLUMNS
+    )
+    blinds = pd.DataFrame(
+        conn.execute(f"SELECT {', '.join(BLIND_COLUMNS)} FROM blinds {where}", params).fetchall(), columns=BLIND_COLUMNS
+    )
     player_cols = PLAYER_ROUND_COLUMNS + ["name"]
     player_rounds = pd.DataFrame(
         conn.execute(
@@ -150,6 +165,21 @@ def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[P
             player_rounds=player_rounds[player_rounds["match_id"] == match_id].sort_values(["round", "team"]).reset_index(drop=True),
             deaths=deaths[deaths["match_id"] == match_id].sort_values("tick").reset_index(drop=True),
             trade_chances=chances[chances["match_id"] == match_id].reset_index(drop=True),
+            utility=utility[utility["match_id"] == match_id].reset_index(drop=True),
+            blinds=blinds[blinds["match_id"] == match_id].reset_index(drop=True),
         )
         for match_id in matches["match_id"]
     ]
+
+
+def get_setting(conn: psycopg.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM settings WHERE key = %s", (key,)).fetchone()
+    conn.commit()
+    return row[0] if row else None
+
+
+def set_setting(conn: psycopg.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (key, value)
+    )
+    conn.commit()

@@ -98,6 +98,9 @@ CREATE TABLE IF NOT EXISTS deaths (
     FOREIGN KEY (match_id, round) REFERENCES rounds ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS deaths_victim ON deaths (victim);
+-- Added with parser version 3.
+ALTER TABLE deaths ADD COLUMN IF NOT EXISTS plant_seconds real;
+ALTER TABLE deaths ADD COLUMN IF NOT EXISTS unused_utility integer NOT NULL DEFAULT 0;
 
 -- Where each living teammate of the victim stood and aimed at the moment of a death.
 CREATE TABLE IF NOT EXISTS trade_chances (
@@ -116,6 +119,42 @@ CREATE TABLE IF NOT EXISTS trade_chances (
     FOREIGN KEY (match_id, tick, victim) REFERENCES deaths ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS trade_chances_mate ON trade_chances (mate);
+
+-- Grenades and flashes per player per round (demo.parse_utility).
+CREATE TABLE IF NOT EXISTS player_utility (
+    match_id             text NOT NULL,
+    round                integer NOT NULL,
+    steamid              text NOT NULL,
+    flashes              integer NOT NULL,
+    smokes               integer NOT NULL,
+    hes                  integer NOT NULL,
+    molotovs             integer NOT NULL,
+    enemies_blinded      integer NOT NULL,
+    enemy_blind_seconds  real NOT NULL,
+    teammates_blinded    integer NOT NULL,
+    utility_damage       integer NOT NULL,
+    PRIMARY KEY (match_id, round, steamid),
+    FOREIGN KEY (match_id, round) REFERENCES rounds ON DELETE CASCADE
+);
+
+-- Every flash that blinded someone for a second or more.
+CREATE TABLE IF NOT EXISTS blinds (
+    match_id  text NOT NULL,
+    round     integer NOT NULL,
+    tick      integer NOT NULL,
+    thrower   text NOT NULL,
+    blinded   text NOT NULL,
+    seconds   real NOT NULL,
+    teammate  boolean NOT NULL,
+    PRIMARY KEY (match_id, tick, thrower, blinded),
+    FOREIGN KEY (match_id, round) REFERENCES rounds ON DELETE CASCADE
+);
+
+-- App settings that should survive restarts, e.g. which player "me" is.
+CREATE TABLE IF NOT EXISTS settings (
+    key    text PRIMARY KEY,
+    value  text NOT NULL
+);
 
 -- Players who linked their Valve match history.
 CREATE TABLE IF NOT EXISTS linked_accounts (

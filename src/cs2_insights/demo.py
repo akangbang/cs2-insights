@@ -26,7 +26,7 @@ VALVE_DEMO_NAME = re.compile(r"match730_(\d+)_")
 # Regulation is 24 rounds (MR12); after that, overtime halves start with set money, not pistols.
 REGULATION_ROUNDS = 24
 # Bump when parse_demo extracts something new, so stored matches get re-parsed.
-PARSER_VERSION = 2
+PARSER_VERSION = 3
 
 # Fights: every death, and where each living teammate stood and aimed at that moment.
 TICK_RATE = 64
@@ -34,7 +34,21 @@ SPEED_SAMPLE_TICKS = 16  # movement speed is measured over the quarter second be
 TRADE_LOOK_SECONDS = 5  # a kill on the killer this soon after a death is recorded as a trade
 EYE_HEIGHT, CROUCH_EYE_HEIGHT, CHEST_HEIGHT = 64, 46, 50
 DEATH_PROPS = ["last_place_name", "current_equip_value", "flash_duration"]
-POSITION_PROPS = ["X", "Y", "Z", "pitch", "yaw", "is_alive", "ducking"]
+POSITION_PROPS = ["X", "Y", "Z", "pitch", "yaw", "is_alive", "ducking", "inventory"]
+BOMB_SECONDS = 40  # from plant to explosion
+
+# Utility: grenades thrown, who flashes hit, and grenade damage.
+GRENADE_PRICES = {
+    "Flashbang": 200, "Smoke Grenade": 300, "High Explosive Grenade": 300,
+    "Molotov": 400, "Incendiary Grenade": 500, "Decoy Grenade": 50,
+}
+GRENADE_THROWS = {
+    "weapon_flashbang": "flashes", "weapon_smokegrenade": "smokes", "weapon_hegrenade": "hes",
+    "weapon_molotov": "molotovs", "weapon_incgrenade": "molotovs",
+}
+UTILITY_DAMAGE_WEAPONS = {"hegrenade", "inferno", "molotov"}
+MIN_BLIND_SECONDS = 1.0  # shorter blinds don't change a fight
+UTILITY_COLUMNS = ["flashes", "smokes", "hes", "molotovs", "enemies_blinded", "enemy_blind_seconds", "teammates_blinded", "utility_damage"]
 
 
 @dataclass
@@ -45,6 +59,8 @@ class ParsedDemo:
     player_rounds: pd.DataFrame  # one row per player per round
     deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per death in live play
     trade_chances: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per death per living teammate
+    utility: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per player per round: grenades and flashes
+    blinds: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per flash that blinded someone for 1 s+
 
 
 def match_id_from_path(path: Path) -> str:
@@ -169,6 +185,9 @@ def parse_fights(parser: DemoParser, rounds: pd.DataFrame, player_rounds: pd.Dat
             now = by_tick.get(tick, {})
             here, there = now.get(victim, {}), now.get(killer, {})
             before = by_tick.get(tick - SPEED_SAMPLE_TICKS, {}).get(victim)
+            # Grenades still carried a moment before death (at death the inventory is already empty).
+            carried = (before or here).get("inventory")
+            unused = sum(GRENADE_PRICES.get(item, 0) for item in carried) if carried is not None else 0
             speed = (
                 float(np.hypot(here["X"] - before["X"], here["Y"] - before["Y"]) * TICK_RATE / SPEED_SAMPLE_TICKS)
                 if here and before else None
@@ -206,6 +225,8 @@ def parse_fights(parser: DemoParser, rounds: pd.DataFrame, player_rounds: pd.Dat
                     "team_alive": alive[victim_team],
                     "enemies_alive": alive[enemy_team],
                     "bomb_planted": plant is not None and tick >= plant,
+                    "plant_seconds": (tick - plant) / TICK_RATE if plant is not None and tick >= plant else None,
+                    "unused_utility": int(unused),
                     "traded_by": traded_by,
                     "trade_seconds": trade_seconds,
                 }
@@ -233,6 +254,55 @@ def parse_fights(parser: DemoParser, rounds: pd.DataFrame, player_rounds: pd.Dat
                     )
             alive[victim_team] -= 1
     return pd.DataFrame(deaths), pd.DataFrame(chances)
+
+
+def parse_utility(parser: DemoParser, rounds: pd.DataFrame, player_rounds: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Per player and round: grenades thrown, enemies and teammates flashed, grenade damage; plus every real blind."""
+    team_of = player_rounds.set_index(["round", "steamid"])["team"].to_dict()
+
+    def in_round(frame: pd.DataFrame) -> pd.DataFrame:
+        if frame.empty or "tick" not in frame:
+            return frame.assign(round=pd.Series(dtype=int))
+        out = []
+        for r in rounds.itertuples():
+            live = frame[(frame["tick"] >= r.freeze_end_tick) & (frame["tick"] <= r.end_tick)]
+            out.append(live.assign(round=r.round))
+        return pd.concat(out, ignore_index=True)
+
+    counts = {}
+
+    def add(round_, steamid, column, value=1.0):
+        key = (int(round_), steamid)
+        counts.setdefault(key, dict.fromkeys(UTILITY_COLUMNS, 0.0))[column] += value
+
+    fires = in_round(parser.parse_event("weapon_fire"))
+    for f in fires[fires["weapon"].isin(GRENADE_THROWS)].itertuples():
+        add(f.round, _steamid(f.user_steamid), GRENADE_THROWS[f.weapon])
+
+    blinds = []
+    for b in in_round(parser.parse_event("player_blind")).itertuples():
+        thrower, blinded = _steamid(b.attacker_steamid), _steamid(b.user_steamid)
+        thrower_team, blinded_team = team_of.get((b.round, thrower)), team_of.get((b.round, blinded))
+        if b.blind_duration < MIN_BLIND_SECONDS or thrower_team is None or blinded_team is None or thrower == blinded:
+            continue
+        teammate = thrower_team == blinded_team
+        add(b.round, thrower, "teammates_blinded" if teammate else "enemies_blinded")
+        if not teammate:
+            add(b.round, thrower, "enemy_blind_seconds", float(b.blind_duration))
+        blinds.append({"round": int(b.round), "tick": int(b.tick), "thrower": thrower, "blinded": blinded,
+                       "seconds": float(b.blind_duration), "teammate": teammate})
+
+    hurts = in_round(parser.parse_event("player_hurt"))
+    for h in hurts[hurts["weapon"].isin(UTILITY_DAMAGE_WEAPONS)].itertuples():
+        attacker, victim = _steamid(h.attacker_steamid), _steamid(h.user_steamid)
+        attacker_team = team_of.get((h.round, attacker))
+        if attacker_team is not None and attacker_team != team_of.get((h.round, victim)):
+            add(h.round, attacker, "utility_damage", float(h.dmg_health))
+
+    utility = player_rounds[["round", "steamid"]].copy()
+    for column in UTILITY_COLUMNS:
+        utility[column] = [counts.get((int(r), s), {}).get(column, 0.0) for r, s in zip(utility["round"], utility["steamid"])]
+    return utility, pd.DataFrame(blinds, columns=["round", "tick", "thrower", "blinded", "seconds", "teammate"])
 
 
 def parse_demo(path: str | Path, match_id: str | None = None, source: str | None = None) -> ParsedDemo:
@@ -326,6 +396,7 @@ def parse_demo(path: str | Path, match_id: str | None = None, source: str | None
         ]
     )
     deaths, trade_chances = parse_fights(parser, rounds, player_rounds, team_rounds)
+    utility, blinds = parse_utility(parser, rounds, player_rounds)
     return ParsedDemo(
         match=match,
         rounds=rounds,
@@ -333,4 +404,6 @@ def parse_demo(path: str | Path, match_id: str | None = None, source: str | None
         player_rounds=player_rounds,
         deaths=deaths.assign(match_id=match_id) if len(deaths) else deaths,
         trade_chances=trade_chances.assign(match_id=match_id) if len(trade_chances) else trade_chances,
+        utility=utility.assign(match_id=match_id),
+        blinds=blinds.assign(match_id=match_id),
     )
