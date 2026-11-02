@@ -55,7 +55,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
 - **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.
-- Privacy and Terms pages; light and dark mode.
+- Works on phones (checked at iPhone width: no sideways scrolling, cards stack). Privacy and Terms pages; light and dark mode.
 
 ## How it works
 1. **Parse.** demoparser2 reads each round's money and equipment, every death, where every player stood and aimed at each death, every grenade and flash, and the bomb plant.

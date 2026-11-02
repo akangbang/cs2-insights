@@ -256,6 +256,9 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     )
 
 
+TIMELINE_PRIORITY = ["⚠️", "💰", "🏆", "💀"]
+
+
 def timeline_data(report: Report) -> pd.DataFrame:
     """One row per round: result plus icons for what happened to you in it."""
     deaths = report.deaths
@@ -279,32 +282,42 @@ def timeline_data(report: Report) -> pd.DataFrame:
         if r.round in clutches_won:
             icons.append("🏆")
             notes.append("Won a clutch")
-        rows.append({"round": int(r.round), "result": "Won" if r.won else "Lost", "icons": "".join(icons),
+        # One icon per tile so they fit on a phone; the tooltip lists everything.
+        icon = min(icons, key=TIMELINE_PRIORITY.index) if icons else ""
+        rows.append({"round": int(r.round), "result": "Won" if r.won else "Lost", "icons": icon,
                      "notes": "; ".join(notes) or "Nothing to flag"})
     return pd.DataFrame(rows)
 
 
 def timeline_chart(data: pd.DataFrame, mode: str) -> alt.Chart:
+    """One row of tiles per half (12 rounds, then overtime) so tiles stay wide enough on a phone."""
     palette = COLORS[mode]
+    data = data.assign(
+        half=[("1st half" if r <= 12 else "2nd half" if r <= 24 else "Overtime") for r in data["round"]],
+        slot=[(r - 1) % 12 + 1 if r <= 24 else r - 24 for r in data["round"]],
+    )
+    halves = [h for h in ("1st half", "2nd half", "Overtime") if h in set(data["half"])]
     pick = alt.selection_point(name="pick", fields=["round"], on="click", empty=False)
-    x = alt.X("round:O", title=None, axis=alt.Axis(labelAngle=0, ticks=False, domain=False, labelPadding=6))
+    x = alt.X("slot:O", title=None, axis=None, scale=alt.Scale(domain=list(range(1, 13))))
+    y = alt.Y("half:N", title=None, sort=halves, axis=alt.Axis(ticks=False, domain=False, labelPadding=6))
     tiles = alt.Chart(data).mark_rect(stroke=palette["surface"], strokeWidth=2, cornerRadius=4, cursor="pointer").encode(
-        x=x,
+        x=x, y=y,
         color=alt.Color("result:N", title=None, scale=alt.Scale(domain=["Won", "Lost"], range=[palette["good"], palette["critical"]]),
                         legend=None),  # explained in the caption
         opacity=alt.condition(pick, alt.value(1.0), alt.value(0.8)),
         tooltip=[alt.Tooltip("round:O", title="Round"), alt.Tooltip("result:N", title="Result"), alt.Tooltip("notes:N", title="What happened")],
     ).add_params(pick)
-    icons = alt.Chart(data).mark_text(fontSize=15, baseline="middle").encode(x=x, text="icons:N")
-    return alt.layer(tiles, icons).properties(height=70)
+    icons = alt.Chart(data).mark_text(fontSize=14, baseline="middle", dy=-5).encode(x=x, y=y, text="icons:N")
+    numbers = alt.Chart(data).mark_text(fontSize=9, baseline="middle", dy=11, color=palette["on_fill"]).encode(x=x, y=y, text="round:O")
+    return alt.layer(tiles, icons, numbers).properties(height=alt.Step(40))
 
 
 def render_timeline(report: Report, mode: str) -> None:
     data = timeline_data(report)
     st.markdown("#### Round by round")
     event = st.altair_chart(timeline_chart(data, mode), width="stretch", on_select="rerun", key="timeline")
-    st.caption("Green = round won, red = round lost · ⚠️ avoidable death · 💀 other death · 💰 wrong buy call · 🏆 clutch won. "
-               "Click a round to see what happened.")
+    st.caption("Green = round won, red = round lost · ⚠️ avoidable death · 💰 wrong buy call · 🏆 clutch won · 💀 other death "
+               "(the most important one shows; hover for all). Click a round to see what happened.")
     picked = (event.selection.get("pick") or [{}])[0].get("round") if event and event.selection else None
     if picked is not None:
         render_round(report, int(picked))
