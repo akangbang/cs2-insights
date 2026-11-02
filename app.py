@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import altair as alt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -333,16 +334,20 @@ def death_card(death: pd.Series, report: Report) -> None:
     group = DEATH_GROUPS.get(death["label"], "Other")
     before, after = death["win_before"], death["win_before"] - death["cost"]
     with st.container(border=True):
-        st.markdown(f"{DEATH_ICONS[group]} **Round {death['round']} · {clock(death['round_seconds'])} · "
-                    f"{place_label(death['victim_place'])}** — {death['label']}")
-        reasons = death_reasons(death, report.trade_chances, report.names)
-        if reasons:
-            st.markdown("\n".join(f"- {reason}" for reason in reasons))
-        if group != "Traded":
-            st.markdown(f"**Impact:** your team's chance to win the round went from **{before:.0%} → {after:.0%}**.")
-        if death["label"] in DEATH_FIXES:
-            st.markdown(f"**Next time:** {DEATH_FIXES[death['label']]}")
-        watch_hint(death["tick"])
+        text, picture = st.columns([3, 2])
+        with text:
+            st.markdown(f"{DEATH_ICONS[group]} **Round {death['round']} · {clock(death['round_seconds'])} · "
+                        f"{place_label(death['victim_place'])}** — {death['label']}")
+            reasons = death_reasons(death, report.trade_chances, report.names)
+            if reasons:
+                st.markdown("\n".join(f"- {reason}" for reason in reasons))
+            if group != "Traded":
+                st.markdown(f"**Impact:** your team's chance to win the round went from **{before:.0%} → {after:.0%}**.")
+            if death["label"] in DEATH_FIXES:
+                st.markdown(f"**Next time:** {DEATH_FIXES[death['label']]}")
+            watch_hint(death["tick"])
+        with picture:
+            render_moment_map(death, report)
 
 
 COVER_GROUPS = ["You traded", "In position", "Facing away", "Too far"]
@@ -464,7 +469,7 @@ def render_coverage(report: Report, mode: str) -> None:
         if good.empty:
             st.write("No trades or set-ups this match.")
         for _, row in good.head(2).iterrows():
-            cover_card(row, names)
+            cover_card(row, report)
     with bad_col:
         st.markdown("#### ⚠️ Fix this")
         bad = cover[cover["verdict"] == fights.COVER_FACING_AWAY].sort_values("lost", ascending=False)
@@ -472,7 +477,7 @@ def render_coverage(report: Report, mode: str) -> None:
         if bad.empty and far.empty:
             st.write("Nothing to fix: you were in position every time.")
         for _, row in pd.concat([bad.head(2), far.head(2 - min(len(bad), 2))]).iterrows():
-            cover_card(row, names)
+            cover_card(row, report)
         if len(far):
             st.caption(f"You were too far to trade {len(far)} times (on average {far['distance_to_killer'].mean():,.0f} units "
                        f"from the killer). Playing within {fights.TRADE_RANGE:,} units of a teammate lets you trade him.")
@@ -495,7 +500,8 @@ def render_coverage(report: Report, mode: str) -> None:
         )
 
 
-def cover_card(row: pd.Series, names: dict) -> None:
+def cover_card(row: pd.Series, report: Report) -> None:
+    names = report.names
     icon = "✅" if row["verdict"] in (fights.COVER_TRADED, fights.COVER_SET_UP) else "⚠️"
     with st.container(border=True):
         st.markdown(f"{icon} **Round {row['round']} · {clock(row['round_seconds'])}** — "
@@ -505,6 +511,9 @@ def cover_card(row: pd.Series, names: dict) -> None:
             st.markdown("**Next time:** when a teammate is fighting near you, aim where his killer will appear.")
         elif row["verdict"] == fights.COVER_TOO_FAR:
             st.markdown(f"**Next time:** stay within {fights.TRADE_RANGE:,} units of a teammate taking a fight.")
+        death = report.all_deaths[(report.all_deaths["tick"] == row["tick"]) & (report.all_deaths["victim"] == row["victim"])]
+        if len(death):
+            render_moment_map(death.iloc[0], report)
         watch_hint(row["tick"])
 
 
@@ -603,6 +612,63 @@ def render_calls(calls: pd.DataFrame, with_match: bool = False) -> None:
             "cost": "Rounds lost",
         },
     )
+
+
+MOMENT_ROLES = ["You", "Teammate", "Teammate who died", "Killer"]
+AIM_RAY = 400  # units: how long the aim lines on a moment map are
+
+
+def moment_map(death: pd.Series, chances: pd.DataFrame, names: dict, me: str, mode: str) -> alt.Chart | None:
+    """Top-down positions at the moment of a death: who stood where and where they aimed. No walls (no map images)."""
+    palette = COLORS[mode]
+    if any(pd.isna(death.get(k)) for k in ("victim_x", "victim_y", "killer_x", "killer_y")):
+        return None
+    rows = [
+        {"role": "You" if death["victim"] == me else "Teammate who died", "x": death["victim_x"], "y": death["victim_y"],
+         "yaw": None, "label": "You (died)" if death["victim"] == me else names.get(death["victim"], "Teammate")},
+        {"role": "Killer", "x": death["killer_x"], "y": death["killer_y"], "yaw": None, "label": names.get(death["killer"], "Killer")},
+    ]
+    if len(chances):
+        for c in chances[(chances["tick"] == death["tick"]) & (chances["victim"] == death["victim"])].itertuples():
+            if pd.notna(c.mate_x):
+                rows.append({"role": "You" if c.mate == me else "Teammate", "x": c.mate_x, "y": c.mate_y, "yaw": c.mate_yaw,
+                             "label": "You" if c.mate == me else names.get(c.mate, "Teammate")})
+    points = pd.DataFrame(rows)
+    aims = points[points["yaw"].notna()].copy()
+    aims["x2"] = aims["x"] + AIM_RAY * np.cos(np.radians(aims["yaw"].astype(float)))
+    aims["y2"] = aims["y"] + AIM_RAY * np.sin(np.radians(aims["yaw"].astype(float)))
+
+    xs = pd.concat([points["x"], aims["x2"]]).astype(float)
+    ys = pd.concat([points["y"], aims["y2"]]).astype(float)
+    half = max(xs.max() - xs.min(), ys.max() - ys.min()) / 2 + 250
+    cx, cy = (xs.max() + xs.min()) / 2, (ys.max() + ys.min()) / 2
+    x_scale, y_scale = alt.Scale(domain=[cx - half, cx + half]), alt.Scale(domain=[cy - half, cy + half])
+    color = alt.Color("role:N", title=None, scale=alt.Scale(
+        domain=MOMENT_ROLES, range=[palette["Your team"], palette["neutral"], palette["critical"], palette["Opponent"]]),
+        legend=alt.Legend(orient="bottom", direction="horizontal", columns=2))
+    fight = alt.Chart(pd.DataFrame([{"x": death["killer_x"], "y": death["killer_y"], "x2": death["victim_x"], "y2": death["victim_y"]}])).mark_rule(
+        strokeDash=[5, 4], strokeWidth=1.5, color=palette["text"], opacity=0.6
+    ).encode(x=alt.X("x:Q", scale=x_scale, axis=None), y=alt.Y("y:Q", scale=y_scale, axis=None), x2="x2:Q", y2="y2:Q")
+    layers = [fight]
+    if len(aims):
+        layers.append(alt.Chart(aims).mark_rule(strokeWidth=2, opacity=0.8).encode(
+            x=alt.X("x:Q", scale=x_scale), y=alt.Y("y:Q", scale=y_scale), x2="x2:Q", y2="y2:Q", color=color))
+    layers.append(alt.Chart(points).mark_point(filled=True, size=150, stroke=palette["surface"], strokeWidth=1.5, opacity=1).encode(
+        x=alt.X("x:Q", scale=x_scale), y=alt.Y("y:Q", scale=y_scale), color=color,
+        shape=alt.Shape("role:N", scale=alt.Scale(domain=MOMENT_ROLES, range=["circle", "circle", "diamond", "triangle-up"]), legend=None),
+        tooltip=[alt.Tooltip("label:N", title="Player"), alt.Tooltip("role:N", title="Role")]))
+    # Name only the people the moment is about; other teammates show their name on hover.
+    labelled = points[points["role"] != "Teammate"]
+    layers.append(alt.Chart(labelled).mark_text(align="left", dx=9, dy=-7, fontSize=11, color=palette["text"]).encode(
+        x=alt.X("x:Q", scale=x_scale), y=alt.Y("y:Q", scale=y_scale), text="label:N"))
+    return alt.layer(*layers).properties(width=270, height=270).configure_view(stroke=palette["band"])
+
+
+def render_moment_map(death: pd.Series, report: Report) -> None:
+    chart = moment_map(death, report.trade_chances, report.names, report.steamid, theme_mode())
+    if chart is not None:
+        st.altair_chart(chart, width="content")
+        st.caption("Top-down view at that moment. Lines show where each teammate was aiming; the dashed line is the fight. Walls aren't drawn.")
 
 
 # ---------- pages ----------

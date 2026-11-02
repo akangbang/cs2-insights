@@ -231,3 +231,107 @@ def coverage_summary(cover: pd.DataFrame, model: FightModel) -> dict:
         "grade": model.grade(score) if n >= MIN_COVERAGE_CHANCES else None,
         "rounds_lost": round(float(cover["lost"].sum()), 2) if n else 0.0,
     }
+
+
+# Clutches: the moments you were your team's last player alive.
+CLUTCH_WON = "Won the clutch"
+CLUTCH_PLAYED = "Right to play it"
+CLUTCH_SAVED = "Right to save"
+CLUTCH_SHOULD_SAVE = "Should have saved"
+CLUTCH_SHOULD_PLAY = "Gave up a winnable round"
+CLUTCH_CLOSE = "Close call"
+CLUTCH_MARGIN = 0.03  # win chance vs. save value differences smaller than this are close calls
+BOMB_SECONDS = 40
+DEFUSE_WITHOUT_KIT = 10
+
+
+def clutch_win_chance(model: FightModel, enemies: int, side: str, plant_seconds) -> float:
+    """1vX win chance from players alive and the bomb, cut down when a CT has no time left to defuse."""
+    planted = plant_seconds is not None and not pd.isna(plant_seconds)
+    plant = (1 if side == "T" else -1) if planted else 0
+    p = float(model.win_chance(1, enemies, plant)[0])
+    if planted and side == "CT":
+        left = BOMB_SECONDS - float(plant_seconds)
+        if left < DEFUSE_WITHOUT_KIT / 2:
+            p *= 0.05  # not even time with a kit
+        elif left < DEFUSE_WITHOUT_KIT:
+            p *= 0.5  # only with a kit
+    return p
+
+
+def clutches(deaths: pd.DataFrame, player_rounds: pd.DataFrame, team_rounds: pd.DataFrame, model: FightModel,
+             slope: float | None = None) -> pd.DataFrame:
+    """Every round where a player was their team's last one alive, with the outcome and a fight-or-save verdict.
+
+    Saving keeps your gear for next round; its value is the next round's win chance with that gear
+    minus without it (rates.equipment_win_rate on both teams' real next-round equipment).
+    """
+    from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, equipment_win_rate
+
+    slope = slope or DEFAULT_EQUIPMENT_SLOPE
+    columns = ["round", "tick", "player", "team", "side", "enemies", "plant_seconds", "outcome", "gear", "win_chance", "save_value", "verdict"]
+    if deaths.empty:
+        return pd.DataFrame(columns=columns)
+    teams = team_rounds.set_index(["round", "team"])
+    equip = player_rounds.set_index(["round", "steamid"])["equip_value"].to_dict()
+    rows = []
+    for number, group in deaths.sort_values("tick").groupby("round"):
+        roster = {t: set(player_rounds[(player_rounds["round"] == number) & (player_rounds["team"] == t)]["steamid"]) for t in "AB"}
+        dead = {"A": set(), "B": set()}
+        started = set()
+        for d in group.itertuples():
+            dead[d.victim_team].add(d.victim)
+            team = d.victim_team
+            other = "B" if team == "A" else "A"
+            alive, enemies = roster[team] - dead[team], len(roster[other] - dead[other])
+            if len(alive) != 1 or team in started or enemies == 0 or (number, team) not in teams.index:
+                continue
+            started.add(team)
+            player = next(iter(alive))
+            later = group[(group["tick"] > d.tick) & (group["victim"] == player)]
+            won = bool(teams.at[(number, team), "won"])
+            outcome = "Won" if won else "Died" if len(later) else "Saved"
+            gear = int(later["victim_equip"].iat[0]) if len(later) else int(equip.get((number, player), 0))
+            side = teams.at[(number, team), "side"]
+            p = clutch_win_chance(model, enemies, side, d.plant_seconds)
+
+            save_value = 0.0
+            nxt, their_next = (number + 1, team), (number + 1, other)
+            if nxt in teams.index and their_next in teams.index and teams.at[nxt, "side"] == side:
+                players = max(int(teams.at[nxt, "players"]), 1)
+                mine, theirs = teams.at[nxt, "equip_value"] / players, teams.at[their_next, "equip_value"] / max(int(teams.at[their_next, "players"]), 1)
+                without = mine - gear / players if outcome == "Saved" else mine
+                save_value = equipment_win_rate(without + gear / players, theirs, slope) - equipment_win_rate(without, theirs, slope)
+
+            if outcome == "Won":
+                verdict = CLUTCH_WON
+            elif outcome == "Died":
+                verdict = CLUTCH_SHOULD_SAVE if p + CLUTCH_MARGIN < save_value else CLUTCH_PLAYED if p >= save_value else CLUTCH_CLOSE
+            else:
+                verdict = CLUTCH_SHOULD_PLAY if p > save_value + CLUTCH_MARGIN else CLUTCH_SAVED
+            rows.append({"round": int(number), "tick": int(d.tick), "player": player, "team": team, "side": side, "enemies": enemies,
+                         "plant_seconds": d.plant_seconds, "outcome": outcome, "gear": gear, "win_chance": round(p, 3),
+                         "save_value": round(float(save_value), 3), "verdict": verdict})
+    return pd.DataFrame(rows, columns=columns)
+
+
+def opening_duels(deaths: pd.DataFrame, team_rounds: pd.DataFrame, steamid: str) -> pd.DataFrame:
+    """The first kill of every round where `steamid` was the killer or the victim, and where they stood."""
+    columns = ["round", "won", "place", "side", "weapon"]
+    if deaths.empty:
+        return pd.DataFrame(columns=columns)
+    kills = deaths[deaths["killer_team"].notna() & (deaths["killer_team"] != deaths["victim_team"])]
+    first = kills.sort_values("tick").groupby("round").head(1)
+    mine = first[(first["killer"] == steamid) | (first["victim"] == steamid)].copy()
+    if mine.empty:
+        return pd.DataFrame(columns=columns)
+    mine["won"] = mine["killer"] == steamid
+    mine["team"] = mine["killer_team"].where(mine["won"], mine["victim_team"])
+    sides = team_rounds.set_index(["round", "team"])["side"].to_dict()
+    return pd.DataFrame({
+        "round": mine["round"].astype(int),
+        "won": mine["won"],
+        "place": mine["killer_place"].where(mine["won"], mine["victim_place"]),
+        "side": [sides.get((r, t)) for r, t in zip(mine["round"], mine["team"])],
+        "weapon": mine["weapon"],
+    }).reset_index(drop=True)

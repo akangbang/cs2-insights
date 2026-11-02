@@ -13,9 +13,10 @@ import pandas as pd
 
 from cs2_insights.demo import ParsedDemo
 from cs2_insights import fights
-from cs2_insights.fights import FightModel, coverage, coverage_summary, judge_deaths
+from cs2_insights.fights import FightModel, clutches, coverage, coverage_summary, judge_deaths, opening_duels
 from cs2_insights.grade import CLOSE, FORCE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, expected_win_rate, pooled_rates  # noqa: F401  (re-exported)
+from cs2_insights.utility import team_flashes, utility_summary
 
 UPSET_BELOW = 0.40
 FAVOURED_ABOVE = 0.60
@@ -53,6 +54,12 @@ class Report:
     trade_chances: pd.DataFrame = field(default_factory=pd.DataFrame)  # where everyone stood at each death
     names: dict = field(default_factory=dict)  # steamid -> name, everyone in the match
     fight_model: FightModel = field(default_factory=FightModel)  # the models the fight numbers came from
+    all_deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # every judged death in the match (for moment maps)
+    utility: dict = field(default_factory=dict)  # utility.utility_summary()
+    team_flashes: pd.DataFrame = field(default_factory=pd.DataFrame)  # your flashes that blinded a teammate
+    clutches: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.clutches() where you were last alive
+    openings: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.opening_duels() you were in
+    steamid: str = ""
     moments: list[Moment] = field(default_factory=list)
 
 
@@ -155,6 +162,8 @@ def build_report(
     my_deaths = judged[judged["victim"] == steamid].reset_index(drop=True) if len(judged) else judged
     cover = coverage(judged, parsed.trade_chances, steamid, model) if len(parsed.trade_chances) else pd.DataFrame()
     avoidable = my_deaths[my_deaths["label"].isin(fights.AVOIDABLE)] if len(my_deaths) else my_deaths
+    all_clutches = clutches(parsed.deaths, parsed.player_rounds, parsed.team_rounds, model, slope) if len(parsed.deaths) else pd.DataFrame()
+    my_clutches = all_clutches[all_clutches["player"] == steamid].reset_index(drop=True) if len(all_clutches) else all_clutches
     summary.update(
         {
             "fights_parsed": bool(len(judged)),
@@ -177,6 +186,12 @@ def build_report(
         trade_chances=parsed.trade_chances,
         names=names,
         fight_model=model,
+        all_deaths=judged,
+        utility=utility_summary(parsed.utility, judged, steamid) if len(parsed.utility) else {},
+        team_flashes=team_flashes(parsed.blinds, steamid),
+        clutches=my_clutches,
+        openings=opening_duels(parsed.deaths, parsed.team_rounds, steamid) if len(parsed.deaths) else pd.DataFrame(),
+        steamid=steamid,
         moments=_moments(rounds, calls, my_deaths, cover, names),
     )
 
@@ -325,6 +340,27 @@ def cover_reasons(row: pd.Series, names: dict) -> list[str]:
         reasons.append(f"{names.get(row['traded_by'], 'A teammate')} traded in {row['trade_seconds']:.1f}s.")
     elif row["verdict"] == fights.COVER_FACING_AWAY:
         reasons.append(f"Facing the fight from where you stood would have made it {row['chance_if_facing']:.0%}.")
+    return reasons
+
+
+CLUTCH_FIXES = {
+    fights.CLUTCH_SHOULD_SAVE: "When you're alone against this many with little chance, hide and keep the gun for next round.",
+    fights.CLUTCH_SHOULD_PLAY: "This one was winnable: your chance to win was bigger than what saving the gun was worth.",
+}
+
+
+def clutch_reasons(clutch: pd.Series) -> list[str]:
+    """The facts behind a fight-or-save verdict when you were last alive."""
+    reasons = [f"You were alone against {int(clutch['enemies'])} on {clutch['side']}."]
+    if pd.notna(clutch["plant_seconds"]):
+        left = max(fights.BOMB_SECONDS - float(clutch["plant_seconds"]), 0)
+        reasons.append(f"The bomb had been planted for {float(clutch['plant_seconds']):.0f}s: {left:.0f}s left on it.")
+    reasons.append(f"Players in that spot win the round about {pct(clutch['win_chance'])} of the time.")
+    if clutch["save_value"] > 0:
+        reasons.append(f"Your ${int(clutch['gear']):,} of gear was worth about {clutch['save_value']:.2f} rounds next round.")
+    else:
+        reasons.append("Saving was worth nothing here: money resets after this round.")
+    reasons.append({"Won": "You won it.", "Died": "You fought and died.", "Saved": "You hid and survived."}[clutch["outcome"]])
     return reasons
 
 
