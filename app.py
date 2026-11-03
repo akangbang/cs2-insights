@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from cs2_insights import db
+from cs2_insights import analytics, db
 from cs2_insights.demo import ParsedDemo, parse_demo
 from cs2_insights import fights
 from cs2_insights.demo import TICK_RATE
@@ -150,7 +150,21 @@ def add_all_replays(demos: list[Path]) -> int:
             conn.rollback()
         progress.progress(i / len(demos), text=f"Adding replays… {i}/{len(demos)}")
     progress.empty()
+    if added:
+        refresh_analytics()
     return added
+
+
+def refresh_analytics() -> None:
+    """Rebuild the Power BI tables (analytics schema) so dashboards include the newest matches."""
+    conn = database()
+    if conn is None:
+        return
+    try:
+        with st.spinner("Updating dashboard data…"):
+            analytics.refresh(conn)
+    except Exception:
+        conn.rollback()
 
 
 # ---------- report rendering ----------

@@ -69,6 +69,17 @@ Stored matches live in PostgreSQL, and every match you open joins the pool the m
 
 **Early beta:** the pool is small, and distances are straight lines (walls aren't modelled yet). Treat verdicts as a guide, not gospel.
 
+## Dashboards (Power BI)
+Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `sql/analytics.sql`) that Power BI reads directly. It is rebuilt by the same Python logic as the app, so a dashboard never disagrees with a match report.
+
+| Table | One row per |
+|---|---|
+| `dim_player`, `dim_match` | player; match (with `match_order`, oldest = 1) |
+| `fact_player_match` | player per match: deaths, avoidable deaths, coverage, utility, clutches, opening duels, buy calls |
+| `fact_death`, `fact_clutch`, `fact_opening`, `fact_buy_call` | death; clutch; opening duel; force-or-save decision |
+
+The tables refresh automatically when matches are added (the ingest command or **Add all replays**), or by hand with `python -m cs2_insights.analytics`.
+
 ## Stack
 Python (demoparser2, pandas, NumPy), PostgreSQL, Streamlit + Altair. Planned: Power BI, Excel, AWS hosting.
 
@@ -90,6 +101,9 @@ streamlit run app.py
 # Screenshot mode: shows stand-in names instead of players' real Steam names
 $env:HALFTIME_HIDE_NAMES = "1"; streamlit run app.py
 
+# Rebuild the Power BI tables by hand (adding matches does this automatically)
+python -m cs2_insights.analytics
+
 # Load demo files you already have (.dem, .dem.bz2, .dem.gz, .dem.zst; files or folders)
 python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays"
 
@@ -110,6 +124,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/habits.py` | Patterns across matches |
 | `src/cs2_insights/rates.py` | Pooled win rates and the equipment win curve |
 | `src/cs2_insights/db.py`, `ingest.py` | PostgreSQL storage and bulk loading |
+| `src/cs2_insights/analytics.py`, `sql/analytics.sql` | Power BI star schema, rebuilt from stored matches |
 | `sql/schema.sql` | Database schema |
 | `docs/screenshots/` | README pictures (taken in screenshot mode) |
 | `legal/` | Privacy policy and terms (drafts) |

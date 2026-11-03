@@ -81,6 +81,11 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as error:  # one bad file shouldn't stop the batch
                 failures += 1
                 print(f"FAILED {demo.name}: {error}")
+        # Keep the Power BI tables in step with what was just loaded.
+        from cs2_insights.analytics import refresh
+
+        rows = refresh(conn)
+        print(f"analytics refreshed: {rows['fact_player_match']} player-matches, {rows['fact_death']} deaths")
     return 1 if failures else 0
 
 
