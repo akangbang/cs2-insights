@@ -263,16 +263,24 @@ def clutches(deaths: pd.DataFrame, player_rounds: pd.DataFrame, team_rounds: pd.
              slope: float | None = None) -> pd.DataFrame:
     """Every round where a player was their team's last one alive, with the outcome and a fight-or-save verdict.
 
-    Saving keeps your gear for next round; its value is the next round's win chance with that gear
-    minus without it (rates.equipment_win_rate on both teams' real next-round equipment).
+    A saved gun keeps paying off: the money not spent replacing it carries into later buys. So the
+    value of saving is the rounds the team is expected to win over the rest of the half (up to 4
+    rounds, grade.rounds_won_from) with the gun minus without it, starting from both teams' real
+    money next round. Fighting is right when your chance to win the round, which also keeps the
+    gun, beats that: p * (1 + S) > S, i.e. p > S / (1 + S).
     """
-    from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, equipment_win_rate
+    from cs2_insights.grade import LOOKAHEAD, Economy, rounds_won_from
+    from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE
 
     slope = slope or DEFAULT_EQUIPMENT_SLOPE
-    columns = ["round", "tick", "player", "team", "side", "enemies", "plant_seconds", "outcome", "gear", "win_chance", "save_value", "verdict"]
+    columns = ["round", "tick", "player", "team", "side", "enemies", "plant_seconds", "outcome", "gear", "win_chance",
+               "save_value", "save_rounds", "verdict"]
     if deaths.empty:
         return pd.DataFrame(columns=columns)
     teams = team_rounds.set_index(["round", "team"])
+    from cs2_insights.grade import economy_states
+
+    states = economy_states(team_rounds).set_index(["round", "team"])
     equip = player_rounds.set_index(["round", "steamid"])["equip_value"].to_dict()
     rows = []
     for number, group in deaths.sort_values("tick").groupby("round"):
@@ -296,23 +304,34 @@ def clutches(deaths: pd.DataFrame, player_rounds: pd.DataFrame, team_rounds: pd.
             plant_seconds = getattr(d, "plant_seconds", None)  # missing on matches parsed before version 3
             p = clutch_win_chance(model, enemies, side, plant_seconds)
 
-            save_value = 0.0
+            save_value, save_rounds = 0.0, 0
             nxt, their_next = (number + 1, team), (number + 1, other)
-            if nxt in teams.index and their_next in teams.index and teams.at[nxt, "side"] == side:
-                players = max(int(teams.at[nxt, "players"]), 1)
-                mine, theirs = teams.at[nxt, "equip_value"] / players, teams.at[their_next, "equip_value"] / max(int(teams.at[their_next, "players"]), 1)
-                without = mine - gear / players if outcome == "Saved" else mine
-                save_value = equipment_win_rate(without + gear / players, theirs, slope) - equipment_win_rate(without, theirs, slope)
+            if nxt in states.index and their_next in states.index and teams.at[nxt, "side"] == side:
+                state, their_state = states.loc[nxt], states.loc[their_next]
+                mine, theirs = teams.loc[nxt], teams.loc[their_next]
+                # The real next round already includes the gun if it was saved; add or remove it for the other case.
+                carried = float(mine["start_equip_value"]) - (gear if outcome == "Saved" else 0)
+                team_next = {kept: Economy(float(state["start_money"]), carried + (gear if kept else 0), int(state["loss_counter"]), int(mine["players"]))
+                             for kept in (True, False)}
+                their_next_economy = Economy(float(their_state["start_money"]), float(theirs["start_equip_value"]),
+                                             int(their_state["loss_counter"]), int(theirs["players"]))
+                rounds_left = int(state["rounds_left_in_half"])
+                scores = (int(mine["score"]), int(mine["opponent_score"]))
+                value = {kept: rounds_won_from(slope, team_next[kept], their_next_economy, rounds_left, scores, number + 1 <= 24)
+                         for kept in (True, False)}
+                save_value, save_rounds = max(value[True] - value[False], 0.0), 1 + min(LOOKAHEAD, rounds_left)
 
+            # Fighting wins the round with chance p and keeps the gun if it does; saving keeps it for sure.
+            edge = p * (1 + save_value) - save_value
             if outcome == "Won":
                 verdict = CLUTCH_WON
             elif outcome == "Died":
-                verdict = CLUTCH_SHOULD_SAVE if p + CLUTCH_MARGIN < save_value else CLUTCH_PLAYED if p >= save_value else CLUTCH_CLOSE
+                verdict = CLUTCH_PLAYED if edge >= CLUTCH_MARGIN else CLUTCH_SHOULD_SAVE if edge <= -CLUTCH_MARGIN else CLUTCH_CLOSE
             else:
-                verdict = CLUTCH_SHOULD_PLAY if p > save_value + CLUTCH_MARGIN else CLUTCH_SAVED
+                verdict = CLUTCH_SHOULD_PLAY if edge >= CLUTCH_MARGIN else CLUTCH_SAVED
             rows.append({"round": int(number), "tick": int(d.tick), "player": player, "team": team, "side": side, "enemies": enemies,
                          "plant_seconds": plant_seconds, "outcome": outcome, "gear": gear, "win_chance": round(p, 3),
-                         "save_value": round(float(save_value), 3), "verdict": verdict})
+                         "save_value": round(float(save_value), 3), "save_rounds": save_rounds, "verdict": verdict})
     return pd.DataFrame(rows, columns=columns)
 
 

@@ -109,6 +109,12 @@ def _play(slope: float, mine: Economy, theirs: Economy, my_buy: tuple, their_buy
     return total
 
 
+def rounds_won_from(slope: float, mine: Economy, theirs: Economy, rounds_left: int, scores: tuple[int, int],
+                    in_regulation: bool, depth: int = LOOKAHEAD) -> float:
+    """Expected rounds won from the start of a round, over it and up to `depth` more (stopping at half-time)."""
+    return _round(slope, mine, theirs, rounds_left, depth, scores, in_regulation)
+
+
 def _round(slope: float, mine: Economy, theirs: Economy, rounds_left: int, depth: int,
            scores: tuple[int, int], in_regulation: bool) -> float:
     """Expected rounds won from this round on, both teams playing the standard economy."""

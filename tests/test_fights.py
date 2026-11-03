@@ -126,20 +126,22 @@ def test_fit_recovers_trade_weights_and_falls_back_when_small():
     assert fit_fight_model(deaths, chances.iloc[:50], pd.DataFrame()) == FightModel()
 
 
-def _clutch_round(final_victim=None, a_won=False, next_equip=5_000):
-    """Round 1: team A loses a1-a4 one by one, leaving a5 against b1 and b2. Round 2: both teams buy."""
+def _clutch_round(final_victim=None, a_won=False, next_money=3_000, rounds=4):
+    """Round 1: team A loses a1-a4, leaving a5 alone against five. Later rounds of the same half follow.
+
+    Team A starts round 2 with `next_money` each in the bank; if a5 saved, his $4,700 rifle is carried in too.
+    """
     deaths = [_death(1, 100 + i, f"a{i}", "b1", team_alive=6 - i, enemies_alive=5) for i in range(1, 5)]
-    deaths.append(_death(1, 110, "b3", "a5", victim_team="B", team_alive=5, enemies_alive=1))
-    deaths.append(_death(1, 120, "b4", "a5", victim_team="B", team_alive=4, enemies_alive=1))
-    deaths.append(_death(1, 130, "b5", "a5", victim_team="B", team_alive=3, enemies_alive=1))
     if final_victim:
-        deaths.append(_death(1, 200, final_victim, "b1", team_alive=1, enemies_alive=2, victim_equip=4_700))
-    players = pd.DataFrame([{"round": r, "steamid": f"{t}{i}", "team": t, "equip_value": 4_700} for r in (1, 2) for t in "ab" for i in range(1, 6)])
-    players["team"] = players["team"].str.upper()
+        deaths.append(_death(1, 200, final_victim, "b1", team_alive=1, enemies_alive=5, victim_equip=4_700))
+    players = pd.DataFrame([{"round": r, "steamid": f"{t}{i}", "team": t.upper(), "equip_value": 4_700}
+                            for r in range(1, rounds + 1) for t in "ab" for i in range(1, 6)])
+    saved_gun = 4_700 if not final_victim and not a_won else 0
     team_rounds = pd.DataFrame([
-        {"round": r, "team": t, "side": "CT" if t == "A" else "T", "won": (a_won if t == "A" else not a_won),
-         "players": 5, "equip_value": next_equip * 5 if r == 2 and t == "A" else 25_000}
-        for r in (1, 2) for t in "AB"
+        {"round": r, "team": t, "side": "CT" if t == "A" else "T", "won": (a_won if t == "A" else not a_won) if r == 1 else t == "B",
+         "players": 5, "equip_value": 25_000, "bank": (next_money * 5 if t == "A" and r == 2 else 20_000), "cash_spent": 0,
+         "start_equip_value": (1_000 + saved_gun if t == "A" and r == 2 else 1_000), "score": 0, "opponent_score": r - 1 if t == "A" else 0}
+        for r in range(1, rounds + 1) for t in "AB"
     ])
     return pd.DataFrame(deaths), players, team_rounds
 
@@ -149,7 +151,8 @@ def test_clutch_is_found_with_outcome_and_verdict():
     assert won[["player", "enemies", "outcome", "verdict"]].values.tolist() == [["a5", 5, "Won", fights.CLUTCH_WON]]
     died = clutches(*_clutch_round(final_victim="a5"), MODEL).iloc[0]
     assert died["outcome"] == "Died" and died["gear"] == 4_700
-    assert died["save_value"] > 0  # round 2 is in the same half, so the rifle was worth something
+    assert died["save_value"] > 0 and died["save_rounds"] == 3  # rounds 2-4 are left in the half
+    assert died["verdict"] == fights.CLUTCH_SHOULD_SAVE  # 1v5: almost no chance, and the rifle was worth more
     saved = clutches(*_clutch_round(), MODEL).iloc[0]
     assert saved["outcome"] == "Saved" and saved["verdict"] in (fights.CLUTCH_SAVED, fights.CLUTCH_SHOULD_PLAY)
 
@@ -173,3 +176,14 @@ def test_opening_duels_are_the_first_kill_you_were_in():
     team_rounds = _team_rounds([1, 2, 3], [True, False, False])
     od = opening_duels(deaths, team_rounds, "me")
     assert od[["round", "won", "place", "side"]].values.tolist() == [[1, True, "Ramp", "CT"], [3, False, "Palace", "CT"]]
+
+
+def test_a_saved_gun_is_worth_more_when_the_team_is_poor():
+    rich = clutches(*_clutch_round(final_victim="a5", next_money=6_000), MODEL).iloc[0]["save_value"]
+    poor = clutches(*_clutch_round(final_victim="a5", next_money=2_500), MODEL).iloc[0]["save_value"]
+    assert poor > rich  # the rifle is what lets a poor team buy; a rich team buys anyway
+
+
+def test_saving_on_the_last_round_of_a_half_is_worth_nothing():
+    last = clutches(*_clutch_round(final_victim="a5", rounds=1), MODEL).iloc[0]
+    assert last["save_value"] == 0 and last["save_rounds"] == 0

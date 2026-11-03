@@ -356,10 +356,16 @@ def clutch_reasons(clutch: pd.Series) -> list[str]:
         left = max(fights.BOMB_SECONDS - float(clutch["plant_seconds"]), 0)
         reasons.append(f"The bomb had been planted for {float(clutch['plant_seconds']):.0f}s: {left:.0f}s left on it.")
     reasons.append(f"Players in that spot win the round about {pct(clutch['win_chance'])} of the time.")
-    if clutch["save_value"] > 0:
-        reasons.append(f"Your ${int(clutch['gear']):,} of gear was worth about {clutch['save_value']:.2f} rounds next round.")
-    else:
+    if not clutch["save_rounds"]:
         reasons.append("Saving was worth nothing here: money resets after this round.")
+    elif clutch["save_value"] < 0.01:
+        reasons.append("Your team could buy the same next round with or without your gear, so keeping it changed little.")
+    else:
+        span = "next round" if clutch["save_rounds"] <= 1 else f"the next {int(clutch['save_rounds'])} rounds"
+        reasons.append(f"Keeping your ${int(clutch['gear']):,} of gear was worth about {clutch['save_value']:.2f} rounds over {span}: "
+                       "the money you don't spend replacing it carries into later buys.")
+        if clutch["outcome"] != "Won":
+            reasons.append(f"So fighting was worth it if you'd win more than {clutch['save_value'] / (1 + clutch['save_value']):.0%} of the time.")
     reasons.append({"Won": "You won it.", "Died": "You fought and died.", "Saved": "You hid and survived."}[clutch["outcome"]])
     return reasons
 

@@ -856,7 +856,8 @@ def render_clutches(report: Report) -> None:
     clutch = report.clutches
     st.markdown("#### Clutches: you, alone")
     st.caption("Every round where you were your team's last player alive, and whether fighting or saving was right. "
-               "Fighting is right when your chance to win the round beats what your gear is worth next round.")
+               "A saved gun keeps paying off in later buys, so its value counts the rest of the half (up to 4 rounds). "
+               "Fighting is right when your chance to win beats that, since winning keeps the gun too.")
     if clutch.empty:
         st.write("You were never your team's last player alive this match.")
     else:

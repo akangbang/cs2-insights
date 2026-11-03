@@ -29,7 +29,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Utility tab](docs/screenshots/utility.png)
 
-**Clutches.** Every round you were last alive: was fighting or saving right, given your chance to win, the bomb timer and what your gear was worth next round?
+**Clutches.** Every round you were last alive: was fighting or saving right, given your chance to win, the bomb timer and what your gear was worth over the next few rounds?
 
 ![Clutches tab](docs/screenshots/clutches.png)
 
@@ -61,7 +61,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 1. **Parse.** demoparser2 reads each round's money and equipment, every death, where every player stood and aimed at each death, every grenade and flash, and the bomb plant.
 2. **Round win chance.** Fitted to every stored round from players alive and whether the bomb is planted, so each death has a cost (`fights.py`).
 3. **Trade chance.** Fitted from how often players trade a teammate within 2 seconds, given their distance to the killer and how far their aim is from him. Only 12% of deaths in the current pool are traded that fast (`fights.py`).
-4. **Clutches.** When you're last alive, your chance to win the round (players alive, the bomb, and whether a CT still has time to defuse) is weighed against what your gear is worth in the next round (`fights.py`).
+4. **Clutches.** When you're last alive, your chance to win the round (players alive, the bomb, and whether a CT still has time to defuse) is weighed against what keeping your gear is worth over the rest of the half: the economy is simulated up to 4 rounds ahead with and without the gun, because a saved gun keeps paying off in later buys. Fighting is right when your win chance beats S / (1 + S), since winning keeps the gun too (`fights.py`).
 5. **Buy calls.** Each round where you could force but not full-buy is played forward up to four rounds with CS2's money rules, once for forcing and once for saving (`grade.py`).
 6. **Habits and progress.** Verdicts from all your matches are grouped by situation and ranked by rounds lost (`habits.py`), and tracked match by match (`progress.py`).
 
