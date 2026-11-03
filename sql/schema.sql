@@ -150,6 +150,18 @@ CREATE TABLE IF NOT EXISTS blinds (
     FOREIGN KEY (match_id, round) REFERENCES rounds ON DELETE CASCADE
 );
 
+-- Product usage: what gets used, for the business dashboards. No names, IPs or device details.
+CREATE TABLE IF NOT EXISTS app_events (
+    event_id    bigserial PRIMARY KEY,
+    occurred_at timestamptz NOT NULL DEFAULT now(),
+    session_id  text NOT NULL,   -- random per browser session
+    event       text NOT NULL,   -- e.g. report_viewed
+    steamid     text,            -- the player being reviewed, when there is one
+    match_id    text,
+    detail      text
+);
+CREATE INDEX IF NOT EXISTS app_events_event ON app_events (event, occurred_at);
+
 -- App settings that should survive restarts, e.g. which player "me" is.
 CREATE TABLE IF NOT EXISTS settings (
     key    text PRIMARY KEY,

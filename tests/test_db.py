@@ -118,3 +118,18 @@ def test_settings_round_trip(clean_conn):
     assert db.get_setting(clean_conn, "pytest_missing") is None
     clean_conn.execute("DELETE FROM settings WHERE key = 'pytest_key'")
     clean_conn.commit()
+
+
+def test_events_feed_the_business_views(clean_conn):
+    from cs2_insights import analytics
+
+    analytics.refresh(clean_conn)  # creates the views
+    session = "pytest_session"
+    db.log_event(clean_conn, session, "session_start")
+    db.log_event(clean_conn, session, "report_viewed", steamid="pytest_1", match_id=MATCH_ID)
+    funnel = dict(clean_conn.execute("SELECT stage, sessions FROM analytics.v_funnel").fetchall())
+    assert funnel["Opened the app"] >= 1 and funnel["Viewed a report"] >= 1
+    uses = dict(clean_conn.execute("SELECT event, sessions FROM analytics.v_feature_use").fetchall())
+    assert uses["report_viewed"] >= 1
+    clean_conn.execute("DELETE FROM app_events WHERE session_id = %s", (session,))
+    clean_conn.commit()

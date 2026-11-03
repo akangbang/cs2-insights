@@ -110,3 +110,49 @@ CREATE TABLE IF NOT EXISTS analytics.fact_buy_call (
     cost        real NOT NULL,
     PRIMARY KEY (match_id, round, team)
 );
+
+-- Business metrics: views over app_events (product usage), so they're always current.
+
+CREATE OR REPLACE VIEW analytics.v_usage_daily AS
+SELECT
+    occurred_at::date                                      AS day,
+    count(DISTINCT session_id)                             AS sessions,
+    count(*) FILTER (WHERE event = 'report_viewed')        AS reports_viewed,
+    count(DISTINCT steamid) FILTER (WHERE event = 'report_viewed') AS players_reviewed,
+    count(*) FILTER (WHERE event = 'demo_uploaded')        AS demos_uploaded,
+    coalesce(sum(detail::int) FILTER (WHERE event = 'replays_added'), 0) AS replays_added,
+    count(*) FILTER (WHERE event = 'habits_viewed')        AS habits_views
+FROM app_events
+GROUP BY 1;
+
+-- How far sessions get: opened the app -> viewed a report -> opened habits -> saved themselves.
+CREATE OR REPLACE VIEW analytics.v_funnel AS
+WITH s AS (
+    SELECT session_id,
+           bool_or(event = 'report_viewed') AS viewed_report,
+           bool_or(event = 'habits_viewed') AS viewed_habits,
+           bool_or(event = 'player_saved')  AS saved_player
+    FROM app_events GROUP BY session_id
+)
+SELECT 1 AS step, 'Opened the app' AS stage, count(*) AS sessions FROM s
+UNION ALL SELECT 2, 'Viewed a report', count(*) FILTER (WHERE viewed_report) FROM s
+UNION ALL SELECT 3, 'Opened Your habits', count(*) FILTER (WHERE viewed_report AND viewed_habits) FROM s
+UNION ALL SELECT 4, 'Saved themselves ("This is me")', count(*) FILTER (WHERE viewed_report AND saved_player) FROM s;
+
+-- Which features get used, and by how many sessions.
+CREATE OR REPLACE VIEW analytics.v_feature_use AS
+SELECT event, count(*) AS uses, count(DISTINCT session_id) AS sessions, max(occurred_at) AS last_used
+FROM app_events
+GROUP BY event;
+
+-- Weekly retention: players grouped by the week they were first reviewed, and how many came back each week after.
+CREATE OR REPLACE VIEW analytics.v_retention_weekly AS
+WITH seen AS (
+    SELECT DISTINCT steamid, date_trunc('week', occurred_at)::date AS week
+    FROM app_events WHERE event = 'report_viewed' AND steamid IS NOT NULL
+), first_seen AS (
+    SELECT steamid, min(week) AS cohort_week FROM seen GROUP BY steamid
+)
+SELECT f.cohort_week, (s.week - f.cohort_week) / 7 AS weeks_later, count(*) AS players
+FROM seen s JOIN first_seen f USING (steamid)
+GROUP BY 1, 2;

@@ -1,19 +1,26 @@
 # Privacy policy
 
-*Draft, last updated October 27, 2026. Have a lawyer review before public launch.*
+*Draft, last updated November 3, 2026. Have a lawyer review before public launch.*
 
-Halftime analyzes CS2 match demos to grade economy decisions. This page explains what we collect and what we do with it.
+Halftime analyzes CS2 match demos to grade players' decisions. This page explains what we collect and what we do with it.
 
 ## What we collect
 
-When you upload a demo or choose one from your CS2 replays folder, Halftime reads it and keeps the **round-by-round economy data** from it:
+When you upload a demo or choose one from your CS2 replays folder, Halftime reads it and keeps **match data** from it:
 
 - the map, server name, score and how each round ended;
-- for each of the 10 players: their Steam ID, in-game name, team, side, and each round's money, equipment value, armor, helmet and defuse kit.
+- for each of the 10 players: their Steam ID, in-game name, team, side, and each round's money, equipment value, armor, helmet and defuse kit;
+- every kill: who killed whom, with which weapon, where on the map, and when;
+- at the moment of each kill, where each player stood and which way they were aiming;
+- grenades thrown, who flashes blinded and for how long, and grenade damage.
 
 If you link your Steam match history, we also store your **Steam ID**, your **match history authentication code** and the **share codes** of your matches, so we can show which matches are ready to analyze.
 
 We do **not** collect your Steam password, payment details (handled by our payment provider if you subscribe), chat messages, voice or anything outside the demo file.
+
+## How you use Halftime
+
+To improve the product, Halftime records **which features are used**: for example that a report was opened, a demo uploaded, a round clicked or the habits page viewed, with the time, a random session ID, and the Steam ID and match being reviewed. It does **not** record your IP address, device, browser, or anything you type. These records stay in the same database as your matches and are only used for aggregate product numbers (such as how many reports are opened per day).
 
 ## What we don't keep
 

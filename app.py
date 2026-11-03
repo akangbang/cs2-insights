@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import os
 import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -48,6 +49,8 @@ ROOT = Path(__file__).resolve().parent
 REPLAYS = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays")
 # Screenshot mode for the README: show stand-in names instead of real players' Steam names.
 HIDE_NAMES = os.getenv("HALFTIME_HIDE_NAMES") == "1"
+# Usage tracking for the business dashboards (app_events). Off in screenshot mode or with HALFTIME_NO_TRACKING=1.
+TRACKING = os.getenv("HALFTIME_NO_TRACKING") != "1" and not HIDE_NAMES
 WATCH_LEAD_SECONDS = 5  # "watch" jumps to a few seconds before the moment
 DISCLAIMER = (
     "Halftime is not affiliated with or endorsed by Valve Corporation. "
@@ -126,6 +129,25 @@ def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
         return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
 
 
+def track(event: str, steamid: str | None = None, match_id: str | None = None, detail: str | None = None, once: bool = False) -> None:
+    """Record a usage event for the business dashboards. `once`: only the first time per browser session."""
+    if not TRACKING:
+        return
+    seen = st.session_state.setdefault("tracked", set())
+    key = (event, steamid, match_id, detail)
+    if once and key in seen:
+        return
+    seen.add(key)
+    conn = database()
+    if conn is None:
+        return
+    session = st.session_state.setdefault("session_id", uuid.uuid4().hex)
+    try:
+        db.log_event(conn, session, event, steamid, match_id, detail)
+    except Exception:
+        conn.rollback()  # tracking must never break the app
+
+
 def hide_names(parsed: ParsedDemo) -> ParsedDemo:
     """In screenshot mode, replace each player's name with a stand-in that stays the same across matches."""
     if not HIDE_NAMES:
@@ -151,6 +173,7 @@ def add_all_replays(demos: list[Path]) -> int:
         progress.progress(i / len(demos), text=f"Adding replays… {i}/{len(demos)}")
     progress.empty()
     if added:
+        track("replays_added", detail=str(added))
         refresh_analytics()
     return added
 
@@ -334,6 +357,7 @@ def render_timeline(report: Report, mode: str) -> None:
                "(the most important one shows; hover for all). Click a round to see what happened.")
     picked = (event.selection.get("pick") or [{}])[0].get("round") if event and event.selection else None
     if picked is not None:
+        track("round_opened", steamid=report.steamid, detail=str(picked), once=True)
         render_round(report, int(picked))
 
 
@@ -1073,6 +1097,7 @@ def report_page() -> None:
             return
         try:
             parsed = parse_upload(upload)
+            track("demo_uploaded", match_id=parsed.match.iloc[0]["match_id"], once=True)
         except Exception as error:
             st.error(
                 "Couldn't read that demo. It may not be a CS2 demo, or the download may be incomplete. "
@@ -1112,8 +1137,10 @@ def report_page() -> None:
     if database() is not None and saved_setting("me") != steamid:
         if st.button(f"⭐ This is me: always open my reports as {picked.split('  ·  ')[0]}"):
             save_setting("me", steamid)
+            track("player_saved", steamid=steamid)
             st.toast("Saved. Halftime will pick you automatically from now on.")
 
+    track("report_viewed", steamid=steamid, match_id=match["match_id"], once=True)
     past = player_history(steamid, fight_model, slope, history_stamp())
     current = match_numbers(parsed, steamid, fight_model, slope)
     render_report(build_report(parsed, steamid, pool, slope, fight_model), past, current)
@@ -1164,6 +1191,7 @@ def habits_page() -> None:
         if with_fights else FightModel()
     )
     habits = build_habits(matches, labels[picked], equipment_slope(pool), fight_model)
+    track("habits_viewed", steamid=labels[picked], once=True)
     mode = theme_mode()
     st.header(f"{habits.name} · {habits.matches} match{'es' if habits.matches != 1 else ''}")
     outdated = len(matches) - len(with_fights)
@@ -1234,7 +1262,7 @@ def render_checklist(habits) -> None:
             st.checkbox(item, key=f"checklist_{i}")
         text = "Halftime: before your next match\n" + (f"Focus: {focus[0]}\n" if focus else "") + "".join(f"[ ] {i}\n" for i in items)
         st.download_button("Save as a text file", text, file_name="halftime-checklist.txt", mime="text/plain",
-                           help="Keep it open on a second screen while you play.")
+                           help="Keep it open on a second screen while you play.", on_click=lambda: track("checklist_saved"))
 
 
 def render_focus(matches: list, steamid: str, model: FightModel, slope: float, mode: str) -> None:
@@ -1251,6 +1279,7 @@ def render_focus(matches: list, steamid: str, model: FightModel, slope: float, m
         return
     if choice != saved and database() is not None:
         save_setting("focus", choice)
+        track("focus_set", steamid=steamid, detail=choice)
     label, column, lower_is_better = FOCUS[choice]
     past = history(matches, steamid, model, slope)
     if past.empty or column not in past or past[column].dropna().empty:
@@ -1360,6 +1389,7 @@ def markdown_page(file: str):
 
 
 st.set_page_config(page_title="Halftime", page_icon="⏱️", layout="wide")
+track("session_start", once=True)
 navigation = st.navigation(
     [
         st.Page(report_page, title="Match report", icon="📊", default=True),
