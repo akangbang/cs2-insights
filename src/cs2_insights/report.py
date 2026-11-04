@@ -304,17 +304,19 @@ def death_reasons(death: pd.Series, chances: pd.DataFrame, names: dict) -> list[
         else:
             reasons.append("No teammate was anywhere near the fight.")
     mates = chances[(chances["tick"] == death["tick"]) & (chances["victim"] == death["victim"])] if len(chances) else chances
-    if label in (fights.NOT_TRADED, fights.DUEL, fights.REPEEK) and len(mates):
-        for mate in mates[mates["distance_to_killer"] <= fights.TRADE_RANGE].sort_values("distance_to_killer").itertuples():
+    in_range = mates[mates["distance_to_killer"] <= fights.TRADE_RANGE] if len(mates) else mates
+    if label in (fights.NOT_TRADED, fights.DUEL, fights.REPEEK):
+        for mate in in_range.sort_values("distance_to_killer").itertuples():
             reasons.append(f"{names.get(mate.mate, 'A teammate')} was {mate.distance_to_killer:,.0f} units from your killer, "
                            f"aiming {mate.aim_angle:.0f}° away from him, and didn't trade.")
-        if label == fights.DUEL and not (mates["distance_to_killer"] <= fights.TRADE_RANGE).any():
-            if death["moving"]:
-                reasons.append("You were moving into the fight and lost it; no teammate was close enough to trade.")
-            elif death["side"] == "CT":
-                reasons.append("You were holding an angle alone, which is normal on CT; nobody could have traded.")
-            else:
-                reasons.append("You were holding an angle with no teammate close enough to trade.")
+    # Also when no teammate was alive at all (you were the last one), so a lost duel always gets a reason.
+    if label == fights.DUEL and in_range.empty:
+        if death["moving"]:
+            reasons.append("You were moving into the fight and lost it; no teammate was close enough to trade.")
+        elif death["side"] == "CT":
+            reasons.append("You were holding an angle alone, which is normal on CT; nobody could have traded.")
+        else:
+            reasons.append("You were holding an angle with no teammate close enough to trade.")
     if death["victim_blind"]:
         reasons.append("You were flashed when you died.")
     return reasons
