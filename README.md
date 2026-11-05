@@ -49,7 +49,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
-- **Your habits.** Patterns across all your stored matches, ranked by rounds lost per match, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
+- **Your habits.** Patterns across your matches, ranked by rounds lost per match and compared with every player in the pool, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
   - **Before your next match:** your top habits as a short checklist of actions, with your focus, that you can tick off or save as a text file for a second screen.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.

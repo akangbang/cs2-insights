@@ -68,6 +68,8 @@ class Habits:
     coverage: pd.DataFrame = field(default_factory=pd.DataFrame)  # teammate deaths near you, with match_id
     fight_matches: int = 0  # matches with death data
     coverage_grade: str | None = None
+    pool_traded: float | None = None  # share of deaths traded across the pool
+    pool_coverage: float | None = None  # average coverage score across the pool
     fixes: list[Habit] = field(default_factory=list)
     strengths: list[Habit] = field(default_factory=list)
 
@@ -81,7 +83,7 @@ def _situation(call: pd.Series, first_rounds: set[int]) -> str:
 
 
 def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT_EQUIPMENT_SLOPE,
-                 fight_model: FightModel | None = None) -> Habits:
+                 fight_model: FightModel | None = None, pool: tuple[pd.DataFrame, pd.DataFrame] | None = None) -> Habits:
     """Habits for `steamid` across `matches` (only the matches they played are used).
 
     All `matches` (not only the player's) set the pool averages deaths and coverage are compared with.
@@ -151,7 +153,9 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
     if played < MIN_MATCHES:
         return habits
     if habits.fight_matches:
-        _fight_habits(habits, pd.concat(pool_deaths, ignore_index=True), pd.concat(pool_chances, ignore_index=True), model)
+        # `pool` (deaths, trade chances) lets a hosted user see only their matches but compare with everyone's.
+        all_deaths, all_chances = pool if pool else (pd.concat(pool_deaths, ignore_index=True), pd.concat(pool_chances, ignore_index=True))
+        _fight_habits(habits, all_deaths, all_chances, model)
 
     # Wrong calls, grouped by what you did and when.
     wrong = all_calls[all_calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE])]
@@ -225,6 +229,7 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
 
     if len(cover) >= fights.MIN_COVERAGE_CHANCES:
         pool_score = float(setup_scores(pool_chances, model).mean()) if len(pool_chances) else 0.0
+        habits.pool_coverage = pool_score
         score = float(cover["chance"].mean())
         in_range = cover["distance_to_killer"] <= fights.TRADE_RANGE
         set_up = in_range & (cover["aim_angle"] <= fights.FACING_ANGLE)
@@ -247,6 +252,7 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
 
     traded = deaths["label"] == fights.TRADED
     pool_traded = pool_deaths["trade_seconds"].le(fights.TRADE_SECONDS).mean() if len(pool_deaths) else 0.0
+    habits.pool_traded = float(pool_traded)
     if len(deaths) and traded.mean() >= pool_traded + TRADED_MARGIN:
         habits.strengths.append(Habit(
             f"{int(traded.sum())} of your {len(deaths)} deaths were traded",

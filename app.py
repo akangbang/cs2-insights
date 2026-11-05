@@ -953,13 +953,13 @@ def openings_chart(od: pd.DataFrame, mode: str) -> alt.Chart:
 
 
 @st.cache_data(show_spinner="Loading your past matches…", max_entries=16)
-def player_history(steamid: str, model: FightModel, slope: float, stamp: int) -> pd.DataFrame:
+def player_history(steamid: str, model: FightModel, slope: float, stamp: int, user_id: str | None = None) -> pd.DataFrame:
     """Match-by-match numbers for a player from the database. `stamp` changes when matches are added."""
     conn = database()
     if conn is None:
         return pd.DataFrame()
     try:
-        matches = db.load_matches(conn, steamid=steamid)
+        matches = db.load_matches(conn, steamid=steamid, user_id=user_id)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1165,7 +1165,7 @@ def report_page() -> None:
             st.toast("Saved. Halftime will pick you automatically from now on.")
 
     track("report_viewed", steamid=steamid, match_id=match["match_id"], once=True)
-    past = player_history(steamid, fight_model, slope, history_stamp())
+    past = player_history(steamid, fight_model, slope, history_stamp(), current_user() if HOSTED else None)
     current = match_numbers(parsed, steamid, fight_model, slope)
     render_report(build_report(parsed, steamid, pool, slope, fight_model), past, current)
 
@@ -1193,7 +1193,15 @@ def habits_page() -> None:
         st.info("No matches stored yet. Open a report on the Match report page, or add all your replays from the sidebar.")
         return
 
-    pool = pd.concat([m.team_rounds for m in matches], ignore_index=True)
+    # Your habits come from your matches; the models and "vs the pool" numbers use every stored match.
+    try:
+        pool_deaths, pool_chances, pool_rounds = db.pool_fights(conn)
+        slope = equipment_slope(db.pool_team_rounds(conn))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    fight_model = fit_fight_model(pool_deaths, pool_chances, pool_rounds)
     counts = pd.concat([m.player_rounds.drop_duplicates("steamid")[["steamid", "name"]] for m in matches])
     counts = counts.groupby("steamid").agg(name=("name", "last"), matches=("name", "size")).sort_values("matches", ascending=False)
     labels = {
@@ -1206,15 +1214,7 @@ def habits_page() -> None:
     st.session_state["steamid"] = labels[picked]
 
     with_fights = [m for m in matches if len(m.deaths)]
-    fight_model = (
-        fit_fight_model(
-            pd.concat([m.deaths for m in with_fights], ignore_index=True),
-            pd.concat([m.trade_chances for m in with_fights], ignore_index=True),
-            pool,
-        )
-        if with_fights else FightModel()
-    )
-    habits = build_habits(matches, labels[picked], equipment_slope(pool), fight_model)
+    habits = build_habits(matches, labels[picked], slope, fight_model, pool=(pool_deaths, pool_chances))
     track("habits_viewed", steamid=labels[picked], once=True)
     mode = theme_mode()
     st.header(f"{habits.name} · {habits.matches} match{'es' if habits.matches != 1 else ''}")
@@ -1224,7 +1224,7 @@ def habits_page() -> None:
                    "re-add your replays from the sidebar to include them.")
     render_habit_scorecards(habits)
     render_checklist(habits)
-    render_focus(matches, labels[picked], fight_model, equipment_slope(pool), mode)
+    render_focus(matches, labels[picked], fight_model, slope, mode)
 
     if habits.matches < MIN_MATCHES:
         st.info(f"Habits need at least {MIN_MATCHES} of your matches; you have {habits.matches}. Add more replays from the sidebar.")

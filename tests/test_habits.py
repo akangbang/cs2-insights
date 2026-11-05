@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+from cs2_insights import db
 from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
 from tests.test_grade import ECO, FULL, _team_rounds
 from cs2_insights.demo import ParsedDemo
@@ -55,3 +56,27 @@ def test_checklist_turns_top_habits_into_actions():
     items = checklist(habits)
     assert items[0] == "After a lost pistol, force against their SMGs instead of saving."
     assert len(items) <= 3 and all(items)
+
+
+def test_a_users_habits_compare_with_the_whole_pool():
+    """Only your matches feed your habits, but "vs the pool" uses every stored match."""
+    try:
+        conn = db.connect()
+    except Exception:
+        pytest.skip("PostgreSQL not running")
+    matches = [m for m in db.load_matches(conn) if len(m.deaths)]
+    deaths, chances, _ = db.pool_fights(conn)
+    conn.commit()
+    played = pd.concat([m.player_rounds.drop_duplicates("steamid") for m in matches])["steamid"].value_counts()
+    if played.empty or played.iat[0] < MIN_MATCHES:
+        pytest.skip("no player with enough stored matches")
+    steamid = played.index[0]
+    mine = [m for m in matches if steamid in set(m.player_rounds["steamid"])][:MIN_MATCHES]
+
+    scoped = build_habits(mine, steamid, pool=(deaths, chances))
+    assert scoped.matches == MIN_MATCHES
+    assert scoped.pool_traded == pytest.approx(deaths["trade_seconds"].le(2).mean())
+    # Without the pool, the comparison would only be against the matches passed in.
+    alone = build_habits(mine, steamid)
+    own = pd.concat([m.deaths for m in mine])
+    assert alone.pool_traded == pytest.approx(own["trade_seconds"].le(2).mean())
