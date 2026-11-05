@@ -20,7 +20,7 @@ We do **not** collect your Steam password, payment details (handled by our payme
 
 ## How you use Halftime
 
-To improve the product, Halftime records **which features are used**: for example that a report was opened, a demo uploaded, a round clicked or the habits page viewed, with the time, a random session ID, and the Steam ID and match being reviewed. It does **not** record your IP address, device, browser, or anything you type. These records stay in the same database as your matches and are only used for aggregate product numbers (such as how many reports are opened per day).
+To improve the product, Halftime records **which features are used**: for example that a report was opened, a demo uploaded, a round clicked or the habits page viewed, with the time, a random session ID, a scrambled ID for your account if you're logged in, and the Steam ID and match being reviewed. It does **not** record your IP address, device, browser, or anything you type. These records stay in the same database as your matches, are never shown to other users, and are only used for aggregate product numbers (such as how many reports are opened per day).
 
 ## What we don't keep
 

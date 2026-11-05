@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -35,3 +37,33 @@ def test_refresh_tables_agree_with_each_other():
         assert q("SELECT count(*) FROM analytics.fact_clutch WHERE outcome = 'Won'") == q(
             "SELECT coalesce(sum(clutches_won), 0) FROM analytics.fact_player_match")
     conn.commit()
+
+
+@pytest.mark.skipif(_connect() is None, reason="PostgreSQL not running (docker compose up -d)")
+def test_dashboard_role_reads_analytics_only():
+    conn = _connect()
+    analytics.refresh(conn)
+    can = lambda table: conn.execute("SELECT has_table_privilege('analytics_reader', %s, 'SELECT')", (table,)).fetchone()[0]
+    assert can("analytics.fact_player_match") and can("analytics.v_funnel") and can("analytics.v_retention_weekly")
+    assert not can("public.app_events") and not can("public.linked_accounts") and not can("public.player_rounds")
+    conn.commit()
+
+
+@pytest.mark.skipif(_connect() is None, reason="PostgreSQL not running (docker compose up -d)")
+def test_retention_counts_accounts_when_hosted_and_players_when_local():
+    conn = _connect()
+    analytics.refresh(conn)
+    session = "pytest_retention"
+    before = conn.execute("SELECT coalesce(sum(players), 0) FROM analytics.v_retention_weekly").fetchone()[0]
+    db.log_event(conn, session, "report_viewed", steamid="pytest_a", user_id="pytest_account")
+    db.log_event(conn, session, "report_viewed", steamid="pytest_b", user_id="pytest_account")  # same person, two players
+    db.log_event(conn, session, "report_viewed", steamid="pytest_c", user_id="local")
+    after = conn.execute("SELECT coalesce(sum(players), 0) FROM analytics.v_retention_weekly").fetchone()[0]
+    assert after - before == 2
+    conn.execute("DELETE FROM app_events WHERE session_id = %s", (session,))
+    conn.commit()
+
+
+def test_user_pages_never_read_the_analytics_schema():
+    source = Path(__file__).resolve().parents[1].joinpath("app.py").read_text(encoding="utf-8")
+    assert "FROM analytics." not in source and "v_funnel" not in source and "app_events" not in source.replace("(app_events)", "")

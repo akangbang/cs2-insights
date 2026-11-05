@@ -198,10 +198,10 @@ def set_setting(conn: psycopg.Connection, key: str, value: str) -> None:
 
 
 def log_event(conn: psycopg.Connection, session_id: str, event: str, steamid: str | None = None,
-              match_id: str | None = None, detail: str | None = None) -> None:
+              match_id: str | None = None, detail: str | None = None, user_id: str | None = None) -> None:
     """Record one product-usage event (see app_events in sql/schema.sql)."""
     conn.execute(
-        "INSERT INTO app_events (session_id, event, steamid, match_id, detail) VALUES (%s, %s, %s, %s, %s)",
-        (session_id, event, steamid, match_id, detail),
+        "INSERT INTO app_events (session_id, event, steamid, match_id, detail, user_id) VALUES (%s, %s, %s, %s, %s, %s)",
+        (session_id, event, steamid, match_id, detail, user_id),
     )
     conn.commit()

@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS app_events (
     detail      text
 );
 CREATE INDEX IF NOT EXISTS app_events_event ON app_events (event, occurred_at);
+-- The logged-in account (a hash) in hosted mode; 'local' on your own PC.
+ALTER TABLE app_events ADD COLUMN IF NOT EXISTS user_id text;
 
 -- Which user added which match, for hosted mode. No foreign key on purpose: re-parsing a match
 -- deletes and re-inserts it, and that must not cost its owners their access.

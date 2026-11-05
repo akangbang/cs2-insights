@@ -123,6 +123,7 @@ def build(matches: list[ParsedDemo], parsed_at: dict | None = None) -> dict[str,
 
 def refresh(conn: psycopg.Connection) -> dict[str, int]:
     """Rebuild every analytics table from the stored matches in one transaction. Returns row counts."""
+    db.init_schema(conn)  # the views below depend on the base tables being current
     conn.execute(ANALYTICS_FILE.read_text(encoding="utf-8"))
     conn.commit()
     matches = db.load_matches(conn)

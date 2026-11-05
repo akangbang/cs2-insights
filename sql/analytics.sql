@@ -121,7 +121,8 @@ SELECT
     count(DISTINCT steamid) FILTER (WHERE event = 'report_viewed') AS players_reviewed,
     count(*) FILTER (WHERE event = 'demo_uploaded')        AS demos_uploaded,
     coalesce(sum(detail::int) FILTER (WHERE event = 'replays_added'), 0) AS replays_added,
-    count(*) FILTER (WHERE event = 'habits_viewed')        AS habits_views
+    count(*) FILTER (WHERE event = 'habits_viewed')        AS habits_views,
+    count(DISTINCT user_id) FILTER (WHERE user_id <> 'local') AS active_accounts
 FROM app_events
 GROUP BY 1;
 
@@ -145,14 +146,29 @@ SELECT event, count(*) AS uses, count(DISTINCT session_id) AS sessions, max(occu
 FROM app_events
 GROUP BY event;
 
--- Weekly retention: players grouped by the week they were first reviewed, and how many came back each week after.
+-- Weekly retention: people grouped by the week they first viewed a report, and how many came back each week after.
+-- A person is their account when hosted, and the reviewed player on a local copy with no accounts.
 CREATE OR REPLACE VIEW analytics.v_retention_weekly AS
 WITH seen AS (
-    SELECT DISTINCT steamid, date_trunc('week', occurred_at)::date AS week
-    FROM app_events WHERE event = 'report_viewed' AND steamid IS NOT NULL
+    SELECT DISTINCT
+        CASE WHEN user_id IS NULL OR user_id = 'local' THEN steamid ELSE user_id END AS person,
+        date_trunc('week', occurred_at)::date AS week
+    FROM app_events WHERE event = 'report_viewed'
 ), first_seen AS (
-    SELECT steamid, min(week) AS cohort_week FROM seen GROUP BY steamid
+    SELECT person, min(week) AS cohort_week FROM seen WHERE person IS NOT NULL GROUP BY person
 )
 SELECT f.cohort_week, (s.week - f.cohort_week) / 7 AS weeks_later, count(*) AS players
-FROM seen s JOIN first_seen f USING (steamid)
+FROM seen s JOIN first_seen f USING (person)
 GROUP BY 1, 2;
+
+-- Power BI logs in with a role that can read this schema and nothing else: no raw usage events,
+-- no Steam auth codes. Give a login this role with: GRANT analytics_reader TO <login>;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analytics_reader') THEN
+        CREATE ROLE analytics_reader NOLOGIN;
+    END IF;
+END
+$$;
+GRANT USAGE ON SCHEMA analytics TO analytics_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader;

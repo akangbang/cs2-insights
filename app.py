@@ -149,7 +149,7 @@ def track(event: str, steamid: str | None = None, match_id: str | None = None, d
         return
     session = st.session_state.setdefault("session_id", uuid.uuid4().hex)
     try:
-        db.log_event(conn, session, event, steamid, match_id, detail)
+        db.log_event(conn, session, event, steamid, match_id, detail, current_user())
     except Exception:
         conn.rollback()  # tracking must never break the app
 
@@ -187,7 +187,7 @@ def add_all_replays(demos: list[Path]) -> int:
 def refresh_analytics() -> None:
     """Rebuild the Power BI tables (analytics schema) so dashboards include the newest matches."""
     conn = database()
-    if conn is None:
+    if conn is None or HOSTED:  # hosted, this is too heavy for a user's request: run the analytics command instead
         return
     try:
         with st.spinner("Updating dashboard data…"):
