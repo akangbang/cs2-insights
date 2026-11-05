@@ -123,9 +123,21 @@ def pool_fights(conn: psycopg.Connection, exclude_match_id: str | None = None) -
     )
 
 
-def load_matches(conn: psycopg.Connection, steamid: str | None = None) -> list[ParsedDemo]:
-    """Stored matches rebuilt as ParsedDemo objects, optionally only those `steamid` played in."""
-    where, params = ("WHERE match_id IN (SELECT match_id FROM player_rounds WHERE steamid = %s)", (steamid,)) if steamid else ("", ())
+def add_user_match(conn: psycopg.Connection, user_id: str, match_id: str) -> None:
+    """Record that a user added a match, so hosted mode shows it to them. Doesn't commit."""
+    conn.execute("INSERT INTO user_matches (user_id, match_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (user_id, match_id))
+
+
+def load_matches(conn: psycopg.Connection, steamid: str | None = None, user_id: str | None = None) -> list[ParsedDemo]:
+    """Stored matches rebuilt as ParsedDemo objects, optionally only those `steamid` played in or `user_id` added."""
+    filters, values = [], []
+    if steamid:
+        filters.append("match_id IN (SELECT match_id FROM player_rounds WHERE steamid = %s)")
+        values.append(steamid)
+    if user_id:
+        filters.append("match_id IN (SELECT match_id FROM user_matches WHERE user_id = %s)")
+        values.append(user_id)
+    where, params = ("WHERE " + " AND ".join(filters), tuple(values)) if filters else ("", ())
     match_cols = ["match_id", "source", "map", "rounds", "team_a_score", "team_b_score", "demo_file"]
     matches = pd.DataFrame(
         conn.execute(f"SELECT {', '.join(match_cols)} FROM matches {where} ORDER BY match_id", params).fetchall(),

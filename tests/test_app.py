@@ -36,3 +36,11 @@ def test_upload_mode_prompts_for_a_file():
     app = app.sidebar.radio[0].set_value("Upload a demo").run()
     assert not app.exception
     assert "Upload a demo" in app.info[0].value
+
+
+def test_hosted_mode_without_a_login_shows_nothing(monkeypatch):
+    monkeypatch.setenv("HALFTIME_HOSTED", "1")
+    app = AppTest.from_file("../app.py", default_timeout=120).run()
+    assert not app.exception
+    assert "Sign-in is required" in app.info[0].value
+    assert not app.selectbox and not app.header and not app.metric

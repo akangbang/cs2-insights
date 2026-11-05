@@ -133,3 +133,18 @@ def test_events_feed_the_business_views(clean_conn):
     assert uses["report_viewed"] >= 1
     clean_conn.execute("DELETE FROM app_events WHERE session_id = %s", (session,))
     clean_conn.commit()
+
+
+def test_users_only_load_their_own_matches_and_keep_them_after_a_reparse(clean_conn):
+    db.load_parsed(clean_conn, _fake_demo())
+    db.add_user_match(clean_conn, "pytest_user", MATCH_ID)
+    db.add_user_match(clean_conn, "pytest_user", MATCH_ID)  # adding twice is fine
+    clean_conn.commit()
+    assert [m.match.iloc[0]["match_id"] for m in db.load_matches(clean_conn, user_id="pytest_user")] == [MATCH_ID]
+    assert db.load_matches(clean_conn, user_id="pytest_someone_else") == []
+    assert len(db.load_matches(clean_conn, steamid="pytest_1", user_id="pytest_user")) == 1
+
+    db.load_parsed(clean_conn, _fake_demo(team_a_equip=4_500))  # re-parsing replaces the match
+    assert len(db.load_matches(clean_conn, user_id="pytest_user")) == 1
+    clean_conn.execute("DELETE FROM user_matches WHERE user_id = 'pytest_user'")
+    clean_conn.commit()

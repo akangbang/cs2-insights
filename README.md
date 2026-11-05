@@ -106,6 +106,9 @@ $env:HALFTIME_HIDE_NAMES = "1"; streamlit run app.py
 # Rebuild the Power BI tables by hand (adding matches does this automatically)
 python -m cs2_insights.analytics
 
+# Hosted mode (work in progress, not ready to deploy): per-user matches and settings. Shows nothing until login is added.
+$env:HALFTIME_HOSTED = "1"; streamlit run app.py
+
 # Load demo files you already have (.dem, .dem.bz2, .dem.gz, .dem.zst; files or folders)
 python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays"
 

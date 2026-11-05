@@ -162,6 +162,15 @@ CREATE TABLE IF NOT EXISTS app_events (
 );
 CREATE INDEX IF NOT EXISTS app_events_event ON app_events (event, occurred_at);
 
+-- Which user added which match, for hosted mode. No foreign key on purpose: re-parsing a match
+-- deletes and re-inserts it, and that must not cost its owners their access.
+CREATE TABLE IF NOT EXISTS user_matches (
+    user_id   text NOT NULL,
+    match_id  text NOT NULL,
+    added_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, match_id)
+);
+
 -- App settings that should survive restarts, e.g. which player "me" is.
 CREATE TABLE IF NOT EXISTS settings (
     key    text PRIMARY KEY,

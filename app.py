@@ -49,6 +49,10 @@ ROOT = Path(__file__).resolve().parent
 REPLAYS = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays")
 # Screenshot mode for the README: show stand-in names instead of real players' Steam names.
 HIDE_NAMES = os.getenv("HALFTIME_HIDE_NAMES") == "1"
+# Hosted mode (HALFTIME_HOSTED=1): every user sees only the matches they added, with their own settings.
+# It fails closed: without a working login the app shows nothing rather than everyone's data.
+HOSTED = os.getenv("HALFTIME_HOSTED") == "1"
+LOCAL_USER = "local"
 # Usage tracking for the business dashboards (app_events). Off in screenshot mode or with HALFTIME_NO_TRACKING=1.
 TRACKING = os.getenv("HALFTIME_NO_TRACKING") != "1" and not HIDE_NAMES
 WATCH_LEAD_SECONDS = 5  # "watch" jumps to a few seconds before the moment
@@ -119,6 +123,8 @@ def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
         return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
     try:
         db.load_parsed(conn, parsed)
+        if HOSTED:
+            db.add_user_match(conn, current_user(), parsed.match.iloc[0]["match_id"])
         match_id = parsed.match.iloc[0]["match_id"]
         pool = db.pool_team_rounds(conn, exclude_match_id=match_id)
         fight_pool = db.pool_fights(conn, exclude_match_id=match_id)
@@ -974,12 +980,29 @@ def history_stamp() -> int:
         return 0
 
 
+def current_user() -> str | None:
+    """Who is using the app: LOCAL_USER on your own PC; when hosted, a hash of the login, or None if not logged in."""
+    if not HOSTED:
+        return LOCAL_USER
+    try:
+        if st.user.is_logged_in and st.user.email:
+            return hashlib.sha256(st.user.email.encode()).hexdigest()[:32]  # so the database holds no email addresses
+    except Exception:
+        pass
+    return None
+
+
+def setting_key(key: str) -> str:
+    user = current_user()
+    return key if user == LOCAL_USER else f"{user}:{key}"
+
+
 def saved_setting(key: str) -> str | None:
     conn = database()
     if conn is None:
         return None
     try:
-        return db.get_setting(conn, key)
+        return db.get_setting(conn, setting_key(key))
     except Exception:
         conn.rollback()
         return None
@@ -988,7 +1011,7 @@ def saved_setting(key: str) -> str | None:
 def save_setting(key: str, value: str) -> None:
     conn = database()
     if conn is not None:
-        db.set_setting(conn, key, value)
+        db.set_setting(conn, setting_key(key), value)
 
 
 def format_focus(value, column: str) -> str:
@@ -1068,7 +1091,8 @@ def report_page() -> None:
 
     with st.sidebar:
         st.markdown("### Choose a match")
-        source = st.radio("Demo source", ["My CS2 replays", "Upload a demo"], label_visibility="collapsed")
+        # A hosted copy has no replays folder of yours to read.
+        source = "Upload a demo" if HOSTED else st.radio("Demo source", ["My CS2 replays", "Upload a demo"], label_visibility="collapsed")
 
     parsed = None
     if source == "My CS2 replays":
@@ -1154,13 +1178,13 @@ def habits_page() -> None:
         st.warning("Habits need the match database. Start it with `docker compose up -d`, then refresh.")
         return
 
-    demos = replay_demos(Path(st.session_state.get("replays_folder", str(REPLAYS))))
+    demos = [] if HOSTED else replay_demos(Path(st.session_state.get("replays_folder", str(REPLAYS))))
     if demos and st.sidebar.button(f"Add all {len(demos)} replays", help="Parses every replay in your CS2 folder that isn't stored yet."):
         added = add_all_replays(demos)
         st.sidebar.success(f"Added {added} new match{'es' if added != 1 else ''}.")
 
     try:
-        matches = [hide_names(m) for m in db.load_matches(conn)]
+        matches = [hide_names(m) for m in db.load_matches(conn, user_id=current_user() if HOSTED else None)]
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1389,6 +1413,11 @@ def markdown_page(file: str):
 
 
 st.set_page_config(page_title="Halftime", page_icon="⏱️", layout="wide")
+if current_user() is None:
+    st.title("Halftime")
+    st.info("Sign-in is required, and isn't available yet.")
+    st.caption(DISCLAIMER)
+    st.stop()
 track("session_start", once=True)
 navigation = st.navigation(
     [
