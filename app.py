@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from cs2_insights import analytics, db
+from cs2_insights import analytics, calibration, db
 from cs2_insights.demo import ParsedDemo, parse_demo
 from cs2_insights import fights
 from cs2_insights.confidence import call_confidence, clutch_confidence, death_confidence, describe, grade_confidence, habit_confidence
@@ -1415,6 +1415,73 @@ def avoidable_trend_chart(deaths: pd.DataFrame, matches: list, mode: str) -> alt
     )
 
 
+@st.cache_data(show_spinner="Testing the predictions on matches the models haven't seen…", max_entries=2)
+def accuracy_tables(stamp: int) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    """Held-out test results. `stamp` changes when matches are added."""
+    conn = database()
+    matches = db.load_matches(conn)
+    conn.commit()
+    preds = calibration.predictions(matches)
+    return calibration.buckets(preds), calibration.scores(preds), sum(1 for m in matches if len(m.deaths))
+
+
+def accuracy_chart(table: pd.DataFrame, mode: str) -> alt.Chart:
+    """Predicted against actual: an honest model's dots sit on the diagonal."""
+    palette = COLORS[mode]
+    scale = alt.Scale(domain=[0, 1])
+    diagonal = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(color=palette["neutral"], strokeDash=[5, 4]).encode(
+        x=alt.X("x:Q", scale=scale, title="What the model predicted", axis=alt.Axis(format=".0%", tickCount=5)),
+        y=alt.Y("y:Q", scale=scale, title="What actually happened", axis=alt.Axis(format=".0%", tickCount=5)),
+    )
+    dots = alt.Chart(table).mark_circle(color=palette["Your team"], opacity=0.9, stroke=palette["surface"], strokeWidth=1.5).encode(
+        x=alt.X("predicted:Q", scale=scale), y=alt.Y("actual:Q", scale=scale),
+        size=alt.Size("n:Q", legend=None, scale=alt.Scale(range=[60, 420])),
+        tooltip=[alt.Tooltip("predicted:Q", title="Predicted", format=".0%"), alt.Tooltip("actual:Q", title="Actual", format=".0%"),
+                 alt.Tooltip("n:Q", title="Predictions", format=",")],
+    )
+    return alt.layer(diagonal, dots).properties(height=280)
+
+
+def accuracy_page() -> None:
+    st.title("How accurate is it?")
+    st.write("Halftime's verdicts rest on three models, so here they're tested in the open. For each match, the models are "
+             "fitted on all the other matches and then predict the one they haven't seen. If a model is honest, what it calls "
+             "\"30%\" should happen about 30% of the time.")
+    if database() is None:
+        st.warning("This page needs the match database. Start it with `docker compose up -d`, then refresh.")
+        return
+    table, score, matches = accuracy_tables(history_stamp())
+    if table.empty:
+        st.info("Not enough stored matches to test yet.")
+        return
+    mode = theme_mode()
+    columns = st.columns(len(calibration.MODELS))
+    rated = score.set_index("model")
+    for column, (name, label) in zip(columns, calibration.MODELS.items()):
+        if name not in rated.index:
+            continue
+        row = rated.loc[name]
+        solid = table[(table["model"] == name) & ~table["thin"]]
+        with column.container(border=True):
+            st.markdown(f"**{label}**")
+            st.altair_chart(accuracy_chart(solid, mode), width="stretch")
+            st.metric("Average miss", f"{row['average_miss'] * 100:.1f} points",
+                      help="How far predictions were from what happened, averaged over the buckets. Lower is better.")
+            st.caption(f"Beats always guessing the average by {row['skill']:.0%}, over {int(row['predictions']):,} predictions.")
+    st.caption("Dots on the dashed line mean the model is honest; bigger dots have more predictions behind them. "
+               f"Groups with fewer than {calibration.MIN_BUCKET} predictions are left out.")
+    st.markdown("#### What this doesn't prove")
+    st.markdown(
+        f"- **It's a small test:** {matches} matches, all from a similar skill range. Results may differ at other ranks.\n"
+        "- **Predictions aren't independent:** several come from the same round, and the mid-round model counts each moment "
+        "from both teams' sides, so the real amount of evidence is smaller than the counts suggest. Its 50% group is close to automatic.\n"
+        "- **The trade number flatters the model:** most of its predictions sit near 0%, where being right is easy. "
+        "Its rare high predictions are less reliable.\n"
+        "- **Honest odds aren't the same as right advice.** These test how often things happen. A verdict like \"should have "
+        "forced\" also relies on simulating what would have happened instead, which can't be checked this way."
+    )
+
+
 def markdown_page(file: str):
     def page() -> None:
         st.markdown((ROOT / "legal" / file).read_text(encoding="utf-8"))
@@ -1434,6 +1501,7 @@ navigation = st.navigation(
     [
         st.Page(report_page, title="Match report", icon="📊", default=True),
         st.Page(habits_page, title="Your habits", icon="🎯", url_path="habits"),
+        st.Page(accuracy_page, title="How accurate is it?", icon="🔬", url_path="accuracy"),
         st.Page(markdown_page("privacy.md"), title="Privacy", icon="🔒", url_path="privacy"),
         st.Page(markdown_page("terms.md"), title="Terms", icon="📄", url_path="terms"),
     ]
