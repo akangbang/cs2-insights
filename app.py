@@ -739,7 +739,12 @@ def cover_card(row: pd.Series, report: Report) -> None:
             st.markdown(f"**Next time:** stay within {fights.TRADE_RANGE:,} units of a teammate taking a fight.")
         death = report.all_deaths[(report.all_deaths["tick"] == row["tick"]) & (report.all_deaths["victim"] == row["victim"])]
         if len(death):
-            render_moment_map(death.iloc[0], report)
+            d = death.iloc[0]
+            if pd.notna(d["victim_x"]) and pd.notna(d["killer_x"]) and pd.notna(row.get("mate_x")):
+                angle = spacing.separation((d["victim_x"], d["victim_y"]), (row["mate_x"], row["mate_y"]), (d["killer_x"], d["killer_y"]))
+                kind = "a crossfire on the killer" if angle >= spacing.CROSSFIRE_ANGLE else "on the same line as your teammate"
+                st.caption(f"Your angle: {kind} ({angle:.0f}° apart, seen from the killer). Shown for information; not graded.")
+            render_moment_map(d, report)
         watch_hint(row["tick"])
         disagree_button(report, "coverage", row["verdict"], row["round"], row["tick"])
 
@@ -961,6 +966,18 @@ def render_spacing(report: Report, mode: str) -> None:
     st.altair_chart(spacing_chart(mine, rates, mode), width="stretch")
     st.markdown("**Next time:** when you take a fight, have a teammate a few steps behind you (under 300 units), and when a "
                 "teammate takes one, be that player. Trades happen in the first two seconds or not at all.")
+    with st.expander("What about crossfires?"):
+        set_up = int(mine["widest_angle"].notna().sum())
+        crossed = int(mine["crossfire"].sum())
+        st.markdown(f"A crossfire means a teammate watches your fight from a different angle: {spacing.CROSSFIRE_ANGLE}° or more "
+                    f"from you, seen from the killer. When you died with a teammate in range ({set_up} times), they had a "
+                    f"crossfire on your killer {crossed} times.")
+        if finding:
+            cross, line, n = finding
+            st.markdown(f"Across the pool so far ({n:,} deaths), crossfires **didn't** lead to more quick trades: {cross:.0%} of "
+                        f"deaths were traded within 2 seconds with a crossfire set up, {line:.0%} on the same line. A crossfire's "
+                        "real value is probably stopping the kill in the first place, since the killer can't watch both angles. "
+                        "Halftime only sees deaths, so it can't measure that yet, and doesn't grade crossfires until it can.")
 
 
 def render_utility(report: Report, mode: str) -> None:
