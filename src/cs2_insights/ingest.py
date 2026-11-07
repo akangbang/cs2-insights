@@ -23,6 +23,33 @@ DEMO_SUFFIXES = (".dem", ".dem.bz2", ".dem.gz", ".dem.zst")
 OPENERS = {".bz2": bz2.open, ".gz": gzip.open}
 
 
+# How each accepted file type starts, so a wrong or broken file gets a clear message before parsing.
+SIGNATURES = {
+    ".dem": b"PBDEMS2",
+    ".gz": b"\x1f\x8b",
+    ".zst": b"\x28\xb5\x2f\xfd",
+    ".bz2": b"BZh",
+}
+CSGO_SIGNATURE = b"HL2DEMO"
+MIN_DEMO_BYTES = 100_000  # a real match demo is tens of megabytes; anything this small is cut off or empty
+
+
+def check_demo(name: str, head: bytes, size: int) -> str | None:
+    """A plain-language problem with an uploaded file, or None if it looks like a CS2 demo."""
+    suffix = Path(name).suffix.lower()
+    if suffix not in SIGNATURES:
+        return f"{name} isn't a demo file. Upload a .dem from CS2, or a .dem.gz / .dem.zst from FACEIT."
+    if size == 0:
+        return f"{name} is empty. The download probably failed: try downloading the match again."
+    if suffix == ".dem" and head.startswith(CSGO_SIGNATURE):
+        return f"{name} is a CS:GO demo. Halftime reads CS2 demos only."
+    if not head.startswith(SIGNATURES[suffix]):
+        return f"{name} isn't a real {suffix} file, even though it's named like one. It may be renamed, or something else entirely."
+    if size < MIN_DEMO_BYTES:
+        return f"{name} is too small to be a whole match ({size / 1000:.0f} KB). The download was probably cut off."
+    return None
+
+
 def find_demos(paths: list[Path]) -> list[Path]:
     found = []
     for path in paths:

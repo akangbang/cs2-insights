@@ -24,7 +24,7 @@ from cs2_insights.demo import TICK_RATE
 from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
 from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
-from cs2_insights.ingest import DEMO_SUFFIXES, ingest, plain_demo
+from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
 from cs2_insights.utility import UNUSED_WORTH_MENTION
@@ -1158,6 +1158,11 @@ def report_page() -> None:
         st.sidebar.caption("By uploading you agree to the Terms and Privacy policy (see the pages in the menu).")
         if upload is None:
             st.info("Upload a demo in the sidebar to get your report.")
+            render_guide()
+            return
+        problem = check_demo(upload.name, upload.getvalue()[:16], upload.size)
+        if problem:
+            st.error(problem)
             render_guide()
             return
         try:
