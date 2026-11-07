@@ -1,8 +1,9 @@
 """Linking and sync against the local PostgreSQL with a fake Steam server."""
 
 import pytest
+from cryptography.fernet import Fernet
 
-from cs2_insights import db, link
+from cs2_insights import db, link, secretbox
 from cs2_insights.sharecode import ShareCode, encode
 from cs2_insights.steam import SteamAPIError, resolve_steam64
 from tests.test_steam import FakeResponse, FakeSession
@@ -15,6 +16,11 @@ try:
     conn = db.connect()
 except Exception:
     conn = None
+
+
+@pytest.fixture(autouse=True)
+def secret_key(monkeypatch):
+    monkeypatch.setenv(secretbox.KEY_VARIABLE, Fernet.generate_key().decode())
 
 
 @pytest.fixture
@@ -74,3 +80,12 @@ def test_resolve_steam64_from_vanity_and_direct_link():
     assert resolve_steam64("key", f"https://steamcommunity.com/profiles/{STEAM64}") == STEAM64
     with pytest.raises(SteamAPIError):
         resolve_steam64("key", "steamcommunity.com/id/nobody", session=VanitySession({"response": {"success": 42}}))
+
+
+def test_auth_code_is_stored_encrypted(clean_conn):
+    link.link_account(clean_conn, "key", STEAM64, AUTH_CODE, CODES[0], session=FakeSession({CODES[0]: CODES[1]}))
+    stored = clean_conn.execute("SELECT auth_code FROM linked_accounts WHERE steamid = %s", (STEAM64,)).fetchone()[0]
+    assert stored.startswith("enc1:") and AUTH_CODE not in stored
+    assert secretbox.decrypt(stored) == AUTH_CODE
+    # Sync decrypts it to talk to Steam.
+    assert link.sync_account(clean_conn, "key", STEAM64, session=FakeSession({CODES[0]: CODES[1]})) == 1

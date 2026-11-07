@@ -3,7 +3,8 @@
 Usage:
   python -m cs2_insights.link add <steam profile link or Steam64> <share code> [--auth-code CODE]
   python -m cs2_insights.link sync
-The auth code defaults to STEAM_AUTH_CODE in .env.
+The auth code defaults to STEAM_AUTH_CODE in .env. It's stored encrypted (secretbox), so
+HALFTIME_SECRET_KEY must be set in .env too.
 """
 
 import argparse
@@ -14,7 +15,7 @@ import psycopg
 import requests
 from dotenv import load_dotenv
 
-from cs2_insights import db, sharecode, steam
+from cs2_insights import db, secretbox, sharecode, steam
 
 
 def queue_share_code(conn: psycopg.Connection, code: str, steamid: str) -> bool:
@@ -47,7 +48,7 @@ def link_account(
             """INSERT INTO linked_accounts (steamid, auth_code, last_share_code) VALUES (%s, %s, %s)
                ON CONFLICT (steamid) DO UPDATE
                SET auth_code = EXCLUDED.auth_code, last_share_code = EXCLUDED.last_share_code""",
-            (steam64, auth_code.strip(), share_code.strip()),
+            (steam64, secretbox.encrypt(auth_code.strip()), share_code.strip()),
         )
         queue_share_code(conn, share_code.strip(), steam64)
 
@@ -56,9 +57,11 @@ def sync_account(
     conn: psycopg.Connection, api_key: str, steamid: str, session: requests.Session | None = None
 ) -> int:
     """Queue every match played since the last sync. Returns how many new share codes were queued."""
-    auth_code, last_code = conn.execute(
+    stored, last_code = conn.execute(
         "SELECT auth_code, last_share_code FROM linked_accounts WHERE steamid = %s", (steamid,)
     ).fetchone()
+    # Rows linked before encryption still hold plain text until `python -m cs2_insights.link encrypt` runs.
+    auth_code = secretbox.decrypt(stored) if secretbox.is_encrypted(stored) else stored
     queued = 0
     for code in steam.iter_share_codes(api_key, steamid, auth_code, last_code, session=session):
         # Save progress after each code, so a Steam error mid-walk keeps what was found.
@@ -103,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
                 steamids = [row[0] for row in conn.execute("SELECT steamid FROM linked_accounts")]
                 for steamid in steamids:
                     print(f"{steamid}: queued {sync_account(conn, api_key, steamid)} new matches.")
-        except (ValueError, steam.SteamAPIError) as error:
+        except (ValueError, RuntimeError, steam.SteamAPIError) as error:
             print(f"Error: {error}")
             return 1
     return 0

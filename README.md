@@ -102,6 +102,7 @@ python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 pip install -e .
 copy .env.example .env      # then fill in the keys
+python -m cs2_insights.secretbox --new-key   # add the printed HALFTIME_SECRET_KEY to .env (encrypts Steam auth codes)
 docker compose up -d        # local PostgreSQL (the app also runs without it, using one match only)
 python -m pytest            # everything should pass
 ```
