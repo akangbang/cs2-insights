@@ -124,6 +124,9 @@ $env:HALFTIME_HOSTED = "1"; streamlit run app.py
 # Load demo files you already have (.dem, .dem.bz2, .dem.gz, .dem.zst; files or folders)
 python -m cs2_insights.ingest "C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays"
 
+# Encrypt any Steam auth codes saved before encryption existed (one-off)
+python -m cs2_insights.link encrypt
+
 # Link a player's Valve match history to see which matches are ready to analyze
 python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx
 ```

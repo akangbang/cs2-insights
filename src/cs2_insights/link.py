@@ -3,6 +3,7 @@
 Usage:
   python -m cs2_insights.link add <steam profile link or Steam64> <share code> [--auth-code CODE]
   python -m cs2_insights.link sync
+  python -m cs2_insights.link encrypt   (one-off: encrypt auth codes saved before encryption existed)
 The auth code defaults to STEAM_AUTH_CODE in .env. It's stored encrypted (secretbox), so
 HALFTIME_SECRET_KEY must be set in .env too.
 """
@@ -75,6 +76,16 @@ def sync_account(
     return queued
 
 
+def encrypt_existing(conn: psycopg.Connection) -> int:
+    """Encrypt any auth codes still stored as plain text. Returns how many were encrypted."""
+    rows = conn.execute("SELECT steamid, auth_code FROM linked_accounts").fetchall()
+    plain = [(steamid, code) for steamid, code in rows if not secretbox.is_encrypted(code)]
+    with conn.transaction():
+        for steamid, code in plain:
+            conn.execute("UPDATE linked_accounts SET auth_code = %s WHERE steamid = %s", (secretbox.encrypt(code), steamid))
+    return len(plain)
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Link Valve match history and queue new matches.")
@@ -84,7 +95,18 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("share_code")
     add.add_argument("--auth-code", default=os.getenv("STEAM_AUTH_CODE"))
     commands.add_parser("sync")
+    commands.add_parser("encrypt")
     opts = parser.parse_args(argv)
+
+    if opts.command == "encrypt":
+        with db.connect() as conn:
+            db.init_schema(conn)
+            try:
+                print(f"Encrypted {encrypt_existing(conn)} auth code(s).")
+            except RuntimeError as error:
+                print(f"Error: {error}")
+                return 1
+        return 0
 
     api_key = os.getenv("STEAM_API_KEY")
     if not api_key:

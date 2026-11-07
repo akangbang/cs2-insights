@@ -89,3 +89,14 @@ def test_auth_code_is_stored_encrypted(clean_conn):
     assert secretbox.decrypt(stored) == AUTH_CODE
     # Sync decrypts it to talk to Steam.
     assert link.sync_account(clean_conn, "key", STEAM64, session=FakeSession({CODES[0]: CODES[1]})) == 1
+
+
+def test_encrypt_existing_converts_plain_rows_once(clean_conn):
+    clean_conn.execute(
+        "INSERT INTO linked_accounts (steamid, auth_code, last_share_code) VALUES (%s, %s, %s)", (STEAM64, AUTH_CODE, CODES[0])
+    )
+    clean_conn.commit()
+    assert link.encrypt_existing(clean_conn) >= 1
+    stored = clean_conn.execute("SELECT auth_code FROM linked_accounts WHERE steamid = %s", (STEAM64,)).fetchone()[0]
+    assert secretbox.decrypt(stored) == AUTH_CODE
+    assert link.encrypt_existing(clean_conn) == 0  # already encrypted: nothing to do
