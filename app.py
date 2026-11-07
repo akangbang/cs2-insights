@@ -19,6 +19,7 @@ import streamlit as st
 from cs2_insights import analytics, db
 from cs2_insights.demo import ParsedDemo, parse_demo
 from cs2_insights import fights
+from cs2_insights.confidence import call_confidence, clutch_confidence, death_confidence, describe, grade_confidence, habit_confidence
 from cs2_insights.demo import TICK_RATE
 from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
@@ -519,6 +520,9 @@ def death_card(death: pd.Series, report: Report) -> None:
                 st.markdown(f"**Impact:** your team's chance to win the round went from **{before:.0%} → {after:.0%}**.")
             if death["label"] in DEATH_FIXES:
                 st.markdown(f"**Next time:** {DEATH_FIXES[death['label']]}")
+            sure = death_confidence(death)
+            if sure:
+                st.caption(describe(*sure))
             watch_hint(death["tick"])
         with picture:
             render_moment_map(death, report)
@@ -613,6 +617,7 @@ def render_coverage(report: Report, mode: str) -> None:
     left, right = st.columns([1, 2])
     with left:
         st.metric("Coverage grade", c["grade"] or "–")
+        st.caption(describe(*grade_confidence(c["chances"])))
         cuts = report.fight_model.setup_cuts
         st.caption(f"Each time a teammate died near you, you had on average a **{c['score']:.1%}** chance to trade him, "
                    f"from where you stood and aimed. The middle of the pool is about {(cuts[1] + cuts[2]) / 2:.1%}.")
@@ -704,6 +709,7 @@ def render_buy_calls(report: Report) -> None:
     for _, call in wrong.iterrows():
         with st.container(border=True):
             st.markdown(f"⚠️ **Round {call['round']}** — {call['grade']}  \n{call_detail(call)}")
+            st.caption(describe(*call_confidence(call)))
     right = calls[calls["grade"] == GOOD_CALL]
     if len(right):
         st.markdown(f"✅ **{len(right)} right call{'s' if len(right) != 1 else ''}:** rounds "
@@ -914,6 +920,9 @@ def render_clutches(report: Report) -> None:
                 st.markdown("\n".join(f"- {reason}" for reason in clutch_reasons(c)))
                 if c["verdict"] in CLUTCH_FIXES:
                     st.markdown(f"**Next time:** {CLUTCH_FIXES[c['verdict']]}")
+                sure = clutch_confidence(c)
+                if sure:
+                    st.caption(describe(*sure))
                 watch_hint(c["tick"])
 
     st.markdown("#### Opening duels")
@@ -1238,6 +1247,8 @@ def habits_page() -> None:
         with st.container(border=True):
             impact = f"  \n**Costs you about {habit.cost:.2f} rounds per match.**" if habit.cost > 0 else ""
             st.markdown(f"**#{number} · {habit.title}**  \n{habit.detail}{impact}")
+            if habit.examples:
+                st.caption(describe(*habit_confidence(habit.examples, habits.matches)))
     if len(habits.fixes) > 3:
         with st.expander(f"{len(habits.fixes) - 3} smaller habits"):
             for habit in habits.fixes[3:]:

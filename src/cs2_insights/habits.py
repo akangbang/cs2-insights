@@ -57,6 +57,7 @@ class Habit:
     cost: float  # expected rounds lost per match
     kind: str = "bad"  # "bad" (fix it) or "good" (keep it)
     tip: str = ""  # one line to remember during the next match
+    examples: int = 0  # how many moments this habit is based on
 
 
 @dataclass
@@ -170,6 +171,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                 + _why(made, situation),
                 group["cost"].sum() / played,
                 tip=_buy_tip(made, situation),
+                examples=len(group),
             )
         )
 
@@ -186,6 +188,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                     "Call the buy before the round: all in or all save.",
                     shortfall / played,
                     tip="Call the buy before every round: everyone buys or everyone saves.",
+                    examples=len(split),
                 )
             )
 
@@ -200,6 +203,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                     "utility or a better gun, or drop for a teammate.",
                     0.0,  # not measured in rounds; listed after the habits that are
                     tip="On the last round of each half, spend everything or drop it to a teammate.",
+                    examples=len(unspent),
                 )
             )
 
@@ -225,7 +229,7 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
         if len(group) >= MIN_DEATHS_FOR_HABIT:
             detail = template.format(n=len(group), m=m, per=len(group) / m, lost=fights.LOST_CAUSE, gear=int(group["victim_equip"].sum()))
             habits.fixes.append(Habit(title, detail + f" These deaths cost about {group['cost'].sum():.1f} rounds.", group["cost"].sum() / m,
-                                      tip=DEATH_TIPS[label]))
+                                      tip=DEATH_TIPS[label], examples=len(group)))
 
     if len(cover) >= fights.MIN_COVERAGE_CHANCES:
         pool_score = float(setup_scores(pool_chances, model).mean()) if len(pool_chances) else 0.0
@@ -246,7 +250,8 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
                    " Most of the gap is distance: play close enough to your teammates (under 900 units) to trade them.")
             cost = max(pool_score - score, 0) * len(cover) * float(cover["cost"].mean()) / m
             habits.fixes.append(Habit(f"You're rarely set up to trade teammates (coverage {habits.coverage_grade})", detail + tip, cost,
-                                      tip="When a teammate fights near you, stay within 900 units and aim where his killer will be."))
+                                      tip="When a teammate fights near you, stay within 900 units and aim where his killer will be.",
+                                      examples=len(cover)))
         elif habits.coverage_grade in ("A", "B"):
             habits.strengths.append(Habit(f"You cover your teammates well (coverage {habits.coverage_grade})", detail, 0.0, "good"))
 

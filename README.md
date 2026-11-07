@@ -49,6 +49,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
+- **"How sure are we?" labels.** Avoidable deaths, clutches, buy calls, coverage grades and habits each carry a high, medium or low label with a one-line reason, so a tip from thin evidence doesn't look as solid as one with plenty behind it. These are rules of thumb, not statistical guarantees.
 - **Your habits.** Patterns across your matches, ranked by rounds lost per match and compared with every player in the pool, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
   - **Before your next match:** your top habits as a short checklist of actions, with your focus, that you can tick off or save as a text file for a second screen.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
@@ -129,6 +130,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/report.py` | Per-match report, reasons and key moments |
 | `src/cs2_insights/grade.py` | Force-or-save grader (money simulation) |
 | `src/cs2_insights/habits.py` | Patterns across matches |
+| `src/cs2_insights/confidence.py` | "How sure are we?" labels on verdicts |
 | `src/cs2_insights/rates.py` | Pooled win rates and the equipment win curve |
 | `src/cs2_insights/db.py`, `ingest.py` | PostgreSQL storage and bulk loading |
 | `src/cs2_insights/analytics.py`, `sql/analytics.sql` | Power BI star schema, rebuilt from stored matches |
