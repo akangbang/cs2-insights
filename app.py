@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from cs2_insights import analytics, calibration, db
+from cs2_insights import analytics, calibration, db, privacy
 from cs2_insights.demo import ParsedDemo, parse_demo
 from cs2_insights import fights
 from cs2_insights.confidence import call_confidence, clutch_confidence, death_confidence, describe, grade_confidence, habit_confidence
@@ -155,12 +155,16 @@ def track(event: str, steamid: str | None = None, match_id: str | None = None, d
         conn.rollback()  # tracking must never break the app
 
 
+def stand_in(steamid: str) -> str:
+    """Screenshot mode's stand-in name for a player, the same in every match."""
+    return f"Player {int(hashlib.sha1(steamid.encode()).hexdigest(), 16) % 900 + 100}"
+
+
 def hide_names(parsed: ParsedDemo) -> ParsedDemo:
     """In screenshot mode, replace each player's name with a stand-in that stays the same across matches."""
     if not HIDE_NAMES:
         return parsed
-    stand_in = parsed.player_rounds["steamid"].map(lambda sid: f"Player {int(hashlib.sha1(sid.encode()).hexdigest(), 16) % 900 + 100}")
-    return dataclasses.replace(parsed, player_rounds=parsed.player_rounds.assign(name=stand_in))
+    return dataclasses.replace(parsed, player_rounds=parsed.player_rounds.assign(name=parsed.player_rounds["steamid"].map(stand_in)))
 
 
 def replay_demos(folder: Path) -> list[Path]:
@@ -1510,6 +1514,58 @@ def accuracy_page() -> None:
     )
 
 
+def confirmed(key: str) -> bool:
+    """A typed confirmation, so nothing is deleted by a stray click."""
+    return st.text_input("Type DELETE to confirm", key=key, placeholder="DELETE") == "DELETE"
+
+
+def data_page() -> None:
+    st.title("Your data")
+    st.write("See what Halftime keeps about you and delete it. Deletions can't be undone.")
+    conn = database()
+    if conn is None:
+        st.warning("This page needs the match database. Start it with `docker compose up -d`, then refresh.")
+        return
+
+    st.subheader("Forget my player")
+    st.write(f"Replaces your Steam ID in every stored match with a random ID and your name with \"{privacy.REMOVED_NAME}\". "
+             "Your anonymous numbers stay in the pool so other players' stats still add up, but nothing links them to you. "
+             "Also removes a linked Steam match history.")
+    me = saved_setting("me")
+    try:
+        players = conn.execute("SELECT steamid, last_name FROM players WHERE last_name IS DISTINCT FROM %s ORDER BY last_name",
+                               (privacy.REMOVED_NAME,)).fetchall()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        players = []
+    names = {sid: stand_in(sid) for sid, _ in players} if HIDE_NAMES else dict(players)
+    if HOSTED:  # on a shared copy you can only remove yourself
+        choices = [me] if me in names else []
+    else:  # your own copy: you can honour another player's removal request too
+        choices = ([me] if me in names else []) + [sid for sid in names if sid != me]
+    if not choices:
+        st.caption("No player to forget yet: press \"This is me\" on a match report first." if HOSTED else "No stored players.")
+    else:
+        picked = st.selectbox("Player", choices, format_func=lambda sid: f"{names[sid]}{' (you)' if sid == me else ''}")
+        if st.button("Forget this player", type="primary", disabled=not confirmed("confirm_forget")):
+            privacy.forget_player(conn, picked)
+            st.session_state.pop("steamid", None)
+            st.cache_data.clear()
+            st.success(f"Done: {names[picked]} is now \"{privacy.REMOVED_NAME}\" in every stored match.")
+
+    st.subheader("Delete my account data")
+    st.write("Deletes your settings (who you are, your focus), your usage history and your disagreements"
+             + (", and every match only you added." if HOSTED else " on this copy. Matches stay; forget a player above to anonymise them."))
+    if st.button("Delete my account data", type="primary", disabled=not confirmed("confirm_account")):
+        counts = privacy.delete_account(conn, current_user(), local=not HOSTED)
+        for key in ("steamid", "review_player", "tracked"):
+            st.session_state.pop(key, None)
+        st.cache_data.clear()
+        st.success("Deleted: " + ", ".join(f"{n} {name.replace('_', ' ')}" for name, n in counts.items()) + ".")
+    st.caption("Questions or a removal request for someone else: see the Privacy page.")
+
+
 def markdown_page(file: str):
     def page() -> None:
         st.markdown((ROOT / "legal" / file).read_text(encoding="utf-8"))
@@ -1530,6 +1586,7 @@ navigation = st.navigation(
         st.Page(report_page, title="Match report", icon="📊", default=True),
         st.Page(habits_page, title="Your habits", icon="🎯", url_path="habits"),
         st.Page(accuracy_page, title="How accurate is it?", icon="🔬", url_path="accuracy"),
+        st.Page(data_page, title="Your data", icon="🗑️", url_path="data"),
         st.Page(markdown_page("privacy.md"), title="Privacy", icon="🔒", url_path="privacy"),
         st.Page(markdown_page("terms.md"), title="Terms", icon="📄", url_path="terms"),
     ]

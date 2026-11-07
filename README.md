@@ -62,6 +62,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
 - **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.
+- **Your data.** Forget your player (your Steam ID is replaced by a random one and your name removed in every stored match) or delete your account's settings, usage history and disagreements. Both need a typed confirmation.
 - Works on phones (checked at iPhone width: no sideways scrolling, cards stack). Privacy and Terms pages; light and dark mode.
 
 ## How it works
@@ -142,6 +143,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/report.py` | Per-match report, reasons and key moments |
 | `src/cs2_insights/grade.py` | Force-or-save grader (money simulation) |
 | `src/cs2_insights/habits.py` | Patterns across matches |
+| `src/cs2_insights/privacy.py` | Deleting an account's data and forgetting a player |
 | `src/cs2_insights/calibration.py` | Tests the models on matches they haven't seen |
 | `src/cs2_insights/confidence.py` | "How sure are we?" labels on verdicts |
 | `src/cs2_insights/rates.py` | Pooled win rates and the equipment win curve |
