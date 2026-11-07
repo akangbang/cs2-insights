@@ -95,7 +95,7 @@ def database():
         return None
 
 
-@st.cache_data(show_spinner="Parsing demo…", max_entries=8)
+@st.cache_data(show_spinner=False, max_entries=8)  # analyse() shows the progress
 def parse_cached(path: str, cache_key: str) -> ParsedDemo:
     """cache_key changes when the file does, so edits are re-parsed."""
     with plain_demo(Path(path)) as demo:
@@ -107,13 +107,30 @@ def _match_id_for(path: Path, cache_key: str) -> str | None:
     return None if path.name.startswith("match730_") else f"upload_{cache_key[:16]}"
 
 
-def parse_upload(upload) -> ParsedDemo:
-    data = upload.getvalue()
-    digest = hashlib.sha256(data).hexdigest()
+def parse_upload(upload, digest: str) -> ParsedDemo:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / upload.name
-        path.write_bytes(data)
+        path.write_bytes(upload.getvalue())
         return parse_cached(str(path), digest)
+
+
+def analyse(load, key: str, name: str):
+    """Parse a match and compare it with the pool, showing each step the first time a match is opened."""
+    seen = st.session_state.setdefault("analysed", set())
+    if key in seen:  # already analysed this session: no progress box on every click
+        parsed = load()
+        return (parsed, *save_and_pool(parsed))
+    compressed = not name.lower().endswith(".dem")
+    with st.status("Analysing your match…", expanded=True) as status:
+        st.write("✔ The file looks like a CS2 demo.")
+        st.write(("Unpacking it and reading" if compressed else "Reading") + " every round, kill and grenade (about 5–10 seconds)…")
+        parsed = load()
+        rounds = int(parsed.match.iloc[0]["rounds"])
+        st.write(f"✔ Read {rounds} rounds and {len(parsed.deaths)} kills. Comparing with the other matches in the pool…")
+        result = save_and_pool(parsed)
+        status.update(label=f"Match analysed: {rounds} rounds", state="complete", expanded=False)
+    seen.add(key)
+    return (parsed, *result)
 
 
 def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
@@ -1135,7 +1152,6 @@ def report_page() -> None:
         # A hosted copy has no replays folder of yours to read.
         source = "Upload a demo" if HOSTED else st.radio("Demo source", ["My CS2 replays", "Upload a demo"], label_visibility="collapsed")
 
-    parsed = None
     if source == "My CS2 replays":
         folder = Path(st.sidebar.text_input("CS2 replays folder", str(REPLAYS), key="replays_folder"))
         demos = replay_demos(folder)
@@ -1149,7 +1165,8 @@ def report_page() -> None:
         }
         choice = st.sidebar.selectbox("Match", list(labels))
         path = labels[choice]
-        parsed = parse_cached(str(path), f"{path.stat().st_mtime_ns}-{path.stat().st_size}")
+        key = f"{path.stat().st_mtime_ns}-{path.stat().st_size}"
+        load, name = (lambda: parse_cached(str(path), key)), path.name
     else:
         upload = st.sidebar.file_uploader(
             "Demo file", type=[s.lstrip(".").split(".")[-1] for s in DEMO_SUFFIXES],
@@ -1165,18 +1182,20 @@ def report_page() -> None:
             st.error(problem)
             render_guide()
             return
-        try:
-            parsed = parse_upload(upload)
-            track("demo_uploaded", match_id=parsed.match.iloc[0]["match_id"], once=True)
-        except Exception as error:
-            st.error(
-                "Couldn't read that demo. It may not be a CS2 demo, or the download may be incomplete. "
-                "Try downloading the match again (CS2: Watch → Your Matches → Download)."
-            )
-            st.caption(f"Details: {type(error).__name__}: {error}")
-            return
+        key = hashlib.sha256(upload.getvalue()).hexdigest()
+        load, name = (lambda: parse_upload(upload, key)), upload.name
 
-    pool, slope, fight_model = save_and_pool(parsed)
+    try:
+        parsed, pool, slope, fight_model = analyse(load, key, name)
+    except Exception as error:
+        st.error(
+            "Couldn't read that demo. It may not be a CS2 demo, or the download may be incomplete. "
+            "Try downloading the match again (CS2: Watch → Your Matches → Download)."
+        )
+        st.caption(f"Details: {type(error).__name__}: {error}")
+        return
+    if source != "My CS2 replays":
+        track("demo_uploaded", match_id=parsed.match.iloc[0]["match_id"], once=True)
     parsed = hide_names(parsed)
     if database() is None:
         st.warning(
