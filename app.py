@@ -24,7 +24,7 @@ from cs2_insights.demo import TICK_RATE
 from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
 from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
-from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, ingest, plain_demo
+from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, completeness_warning, explain_parse_error, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
 from cs2_insights.utility import UNUSED_WORTH_MENTION
@@ -1188,11 +1188,9 @@ def report_page() -> None:
     try:
         parsed, pool, slope, fight_model = analyse(load, key, name)
     except Exception as error:
-        st.error(
-            "Couldn't read that demo. It may not be a CS2 demo, or the download may be incomplete. "
-            "Try downloading the match again (CS2: Watch → Your Matches → Download)."
-        )
-        st.caption(f"Details: {type(error).__name__}: {error}")
+        st.error(explain_parse_error(error))
+        with st.expander("Technical details"):
+            st.code(f"{type(error).__name__}: {error}", language=None)
         return
     if source != "My CS2 replays":
         track("demo_uploaded", match_id=parsed.match.iloc[0]["match_id"], once=True)
@@ -1206,6 +1204,9 @@ def report_page() -> None:
     # Ask who to review whenever nobody already picked is in this demo; never guess.
     match = parsed.match.iloc[0]
     scores = {"A": int(match["team_a_score"]), "B": int(match["team_b_score"])}
+    unfinished = completeness_warning(scores["A"], scores["B"])
+    if unfinished:
+        st.warning(unfinished)
     players = players_in(parsed)
     names = {f"{row.name}  ·  Team {row.team} ({scores[row.team]} rounds won)": row.steamid for row in players.itertuples()}
     options = list(names)

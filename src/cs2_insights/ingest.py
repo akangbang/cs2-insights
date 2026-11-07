@@ -50,6 +50,29 @@ def check_demo(name: str, head: bytes, size: int) -> str | None:
     return None
 
 
+WIN_SCORE = 13  # MR12: first to 13 wins regulation; overtime keeps going from there
+
+
+def explain_parse_error(error: BaseException) -> str:
+    """A plain-language reason a demo couldn't be read."""
+    if isinstance(error, (EOFError, zstandard.ZstdError, OSError)) and not isinstance(error, FileNotFoundError):
+        return "The compressed file is cut off or damaged, so it can't be unpacked. Download it again from FACEIT."
+    if isinstance(error, ValueError) and "No completed rounds" in str(error):
+        return "This demo has no finished rounds. It may be warmup only, a match abandoned at the start, or not a competitive match."
+    if isinstance(error, MemoryError):
+        return "This demo is too big to analyse here. Try a shorter match, or run Halftime on your own PC."
+    return ("Halftime couldn't read this demo. It's most likely cut off or damaged: download the match again. "
+            "If it keeps happening, the demo may come from a CS2 update Halftime doesn't support yet.")
+
+
+def completeness_warning(team_a_score: int, team_b_score: int) -> str | None:
+    """A warning when a demo doesn't contain a finished match, so a partial report isn't taken as the whole game."""
+    if max(team_a_score, team_b_score) >= WIN_SCORE and team_a_score != team_b_score:
+        return None
+    return (f"This demo stops at {team_a_score}–{team_b_score}, before anyone won. The file may be cut off, or the match "
+            "ended early (a surrender or an abandon). The report only covers the rounds in it.")
+
+
 def find_demos(paths: list[Path]) -> list[Path]:
     found = []
     for path in paths:
