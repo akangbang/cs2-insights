@@ -25,6 +25,10 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Coverage moments to repeat and to fix](docs/screenshots/coverage-moments.png)
 
+**Spacing.** How far your nearest teammate was when you died, against how often each distance gets traded.
+
+![Spacing tab](docs/screenshots/spacing.png)
+
 **Your grenades and flashes.** Thrown, enemies and teammates flashed, damage, and deaths with grenades still in your pocket, all against the match average.
 
 ![Utility tab](docs/screenshots/utility.png)
@@ -49,6 +53,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 - **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Uploads are checked first (wrong, CS:GO, renamed or cut-off files get a clear message), analysing shows each step as it happens, a demo that stops before anyone won is flagged so a partial report isn't mistaken for the whole match, and read errors are explained in plain words. Press **This is me** once and Halftime opens on you from then on. A **round timeline** marks every round you won or lost, with icons for avoidable deaths, wrong buy calls and won clutches; click a round to see its full story. The details sit in three tabs: **Fights** (deaths, clutches & openings), **Teamplay** (coverage, utility) and **Economy** (buy calls, round by round).
   - **Your deaths:** each one labelled *traded*, *avoidable* (re-peeked after a kill, pushed with nobody close enough to trade, died with gear in a lost round), *teammates didn't trade* or *lost a duel*, with the reasons, the cost to your team's round win chance, a moment map, and a one-click-copy console command to jump to it in the demo.
   - **Coverage grade (A–F):** how often you were close enough to trade a teammate and aiming at his killer, graded against every player in the pool, with moments to repeat and to fix.
+  - **Spacing:** how far your nearest teammate was each time you died, and how often deaths at that distance get traded across the pool (about 30% within 300 units, 2% alone), with the trades you'd likely have gotten by playing closer.
   - **Utility:** grenades thrown, enemies flashed per flash, teammates flashed, grenade damage, and deaths with unused grenades, against the match average.
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
@@ -145,6 +150,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/habits.py` | Patterns across matches |
 | `src/cs2_insights/privacy.py` | Deleting an account's data and forgetting a player |
 | `src/cs2_insights/calibration.py` | Tests the models on matches they haven't seen |
+| `src/cs2_insights/spacing.py` | Spacing (nearest teammate when you die) and crossfire measurements |
 | `src/cs2_insights/confidence.py` | "How sure are we?" labels on verdicts |
 | `src/cs2_insights/rates.py` | Pooled win rates and the equipment win curve |
 | `src/cs2_insights/db.py`, `ingest.py` | PostgreSQL storage and bulk loading |

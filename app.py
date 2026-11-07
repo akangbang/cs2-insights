@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from cs2_insights import analytics, calibration, db, privacy
+from cs2_insights import analytics, calibration, db, privacy, spacing
 from cs2_insights.demo import ParsedDemo, parse_demo
 from cs2_insights import fights
 from cs2_insights.confidence import call_confidence, clutch_confidence, death_confidence, describe, grade_confidence, habit_confidence
@@ -303,9 +303,11 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with clutch_tab:
             render_clutches(report)
     with teamplay_tab:
-        cover_tab, utility_tab = st.tabs(["🤝 Covering teammates", "🧨 Utility"])
+        cover_tab, spacing_tab, utility_tab = st.tabs(["🤝 Covering teammates", "📏 Spacing", "🧨 Utility"])
         with cover_tab:
             render_coverage(report, mode)
+        with spacing_tab:
+            render_spacing(report, mode)
         with utility_tab:
             render_utility(report, mode)
     with economy_tab:
@@ -897,6 +899,68 @@ def render_moment_map(death: pd.Series, report: Report) -> None:
         st.altair_chart(chart, width="content")
         st.caption("Blue = you · grey = teammates (lines show where they aimed) · red ◆ = teammate who died · "
                    "orange ▲ = killer · dashed line = the fight. Seen from above; walls aren't drawn.")
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def pool_spacing(stamp: int) -> tuple[dict, tuple | None]:
+    """Trade rate per spacing band across the pool, and the crossfire finding. `stamp` changes when matches are added."""
+    conn = database()
+    if conn is None:
+        return dict(spacing.DEFAULT_RATES), None
+    try:
+        deaths, chances, _ = db.pool_fights(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        return dict(spacing.DEFAULT_RATES), None
+    pool = spacing.death_spacing(deaths, chances) if len(deaths) else pd.DataFrame()
+    return (spacing.spacing_rates(pool), spacing.crossfire_finding(pool)) if len(pool) else (dict(spacing.DEFAULT_RATES), None)
+
+
+def spacing_chart(mine: pd.DataFrame, rates: dict, mode: str) -> alt.Chart:
+    """Your deaths per spacing band, traded or not, with how often that band gets traded across the pool."""
+    palette = COLORS[mode]
+    labels = {b: f"{b} · {rates[b]:.0%} traded" for b in spacing.BAND_LABELS}
+    counts = (mine.assign(result=mine["traded"].map({True: "Traded", False: "Not traded"}))
+              .groupby(["band", "result"]).size().reset_index(name="deaths"))
+    counts["where"] = counts["band"].map(labels)
+    counts["stack"] = counts["result"].map({"Traded": 0, "Not traded": 1})
+    bars = alt.Chart(counts).mark_bar(stroke=palette["surface"], strokeWidth=2).encode(
+        y=alt.Y("where:N", title=None, sort=[labels[b] for b in spacing.BAND_LABELS], axis=alt.Axis(labelLimit=260)),
+        x=alt.X("deaths:Q", title="Your deaths", stack="zero", axis=alt.Axis(tickMinStep=1)),
+        color=alt.Color("result:N", title=None, scale=alt.Scale(domain=["Traded", "Not traded"], range=[palette["good"], palette["neutral"]]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        order="stack:Q",
+        tooltip=[alt.Tooltip("band:N", title="Nearest teammate"), alt.Tooltip("result:N", title="Result"), alt.Tooltip("deaths:Q", title="Deaths")],
+    )
+    return alt.layer(bars.properties(height=alt.Step(34)))
+
+
+def render_spacing(report: Report, mode: str) -> None:
+    if report.deaths.empty or "victim_x" not in report.deaths:
+        st.write("No deaths to look at in this match.")
+        return
+    rates, finding = pool_spacing(history_stamp())
+    mine = spacing.death_spacing(report.deaths, report.trade_chances)
+    summary = spacing.spacing_summary(mine, rates)
+    st.markdown(f"When you die, how far away is your nearest teammate? Across the pool, a death with a teammate within "
+                f"{spacing.CLOSE_ENOUGH} units gets traded **{rates[spacing.BAND_LABELS[0]]:.0%}** of the time; alone, "
+                f"**{rates[spacing.BAND_LABELS[-1]]:.0%}**. Being close enough to trade is the single biggest thing in spacing.")
+    cols = st.columns(3)
+    with cols[0].container(border=True):
+        st.metric("Died with a teammate close", f"{summary['close']} of {summary['deaths']}")
+        st.caption(f"Within {spacing.CLOSE_ENOUGH} units of you.")
+    with cols[1].container(border=True):
+        nearest = summary["median_nearest"]
+        st.metric("Nearest teammate", f"{nearest:,.0f} units" if nearest is not None else "–")
+        st.caption("Typical distance (median) at the moment you died.")
+    with cols[2].container(border=True):
+        st.metric("Trades you'd likely have gotten", f"+{summary['extra_trades_if_close']:.1f}",
+                  help="If your far and alone deaths had happened with a teammate close, at the pool's trade rates.")
+        st.caption(f"From your {summary['far']} far or alone deaths.")
+    st.altair_chart(spacing_chart(mine, rates, mode), width="stretch")
+    st.markdown("**Next time:** when you take a fight, have a teammate a few steps behind you (under 300 units), and when a "
+                "teammate takes one, be that player. Trades happen in the first two seconds or not at all.")
 
 
 def render_utility(report: Report, mode: str) -> None:

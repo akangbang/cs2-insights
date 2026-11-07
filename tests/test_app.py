@@ -21,7 +21,8 @@ def test_report_renders_for_newest_replay_and_switches_player():
     assert [m.label for m in app.metric][:4] == ["Rounds won", "Avoidable deaths", "Coverage", "Buy calls right"]
     labels = [t.label for t in app.tabs]
     assert {"⚔️ Fights", "🤝 Teamplay", "💰 Economy"} <= set(labels)
-    assert {"💀 Your deaths", "🎯 Clutches & openings", "🤝 Covering teammates", "🧨 Utility", "💰 Buy calls", "📈 Round by round"} <= set(labels)
+    assert {"💀 Your deaths", "🎯 Clutches & openings", "🤝 Covering teammates", "📏 Spacing", "🧨 Utility", "💰 Buy calls",
+            "📈 Round by round"} <= set(labels)
     assert "Coverage grade" in [m.label for m in app.metric]
 
     first = app.header[0].value
