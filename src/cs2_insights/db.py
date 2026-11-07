@@ -205,3 +205,15 @@ def log_event(conn: psycopg.Connection, session_id: str, event: str, steamid: st
         (session_id, event, steamid, match_id, detail, user_id),
     )
     conn.commit()
+
+
+def add_feedback(conn: psycopg.Connection, user_id: str, match_id: str, round_: int, tick: int, steamid: str,
+                 kind: str, verdict: str, reason: str) -> None:
+    """Record that a user disagreed with a verdict. Changing their mind replaces the reason."""
+    conn.execute(
+        """INSERT INTO verdict_feedback (user_id, match_id, round, tick, steamid, kind, verdict, reason)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (user_id, match_id, tick, steamid, kind) DO UPDATE SET reason = EXCLUDED.reason, created_at = now()""",
+        (user_id, match_id, round_, tick, steamid, kind, verdict, reason),
+    )
+    conn.commit()

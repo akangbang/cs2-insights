@@ -161,6 +161,12 @@ SELECT f.cohort_week, (s.week - f.cohort_week) / 7 AS weeks_later, count(*) AS p
 FROM seen s JOIN first_seen f USING (person)
 GROUP BY 1, 2;
 
+-- Which verdicts players reject most, and why: where to look for model mistakes.
+CREATE OR REPLACE VIEW analytics.v_verdict_feedback AS
+SELECT kind, verdict, reason, count(*) AS disagreements, max(created_at) AS last_seen
+FROM verdict_feedback
+GROUP BY kind, verdict, reason;
+
 -- Power BI logs in with a role that can read this schema and nothing else: no raw usage events,
 -- no Steam auth codes. Give a login this role with: GRANT analytics_reader TO <login>;
 DO $$

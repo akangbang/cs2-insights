@@ -60,6 +60,7 @@ class Report:
     clutches: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.clutches() where you were last alive
     openings: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.opening_duels() you were in
     steamid: str = ""
+    match_id: str = ""
     moments: list[Moment] = field(default_factory=list)
 
 
@@ -192,6 +193,7 @@ def build_report(
         clutches=my_clutches,
         openings=opening_duels(parsed.deaths, parsed.team_rounds, steamid) if len(parsed.deaths) else pd.DataFrame(),
         steamid=steamid,
+        match_id=str(match.get("match_id", "")),
         moments=_moments(rounds, calls, my_deaths, cover, names),
     )
 

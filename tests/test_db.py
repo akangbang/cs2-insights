@@ -148,3 +148,19 @@ def test_users_only_load_their_own_matches_and_keep_them_after_a_reparse(clean_c
     assert len(db.load_matches(clean_conn, user_id="pytest_user")) == 1
     clean_conn.execute("DELETE FROM user_matches WHERE user_id = 'pytest_user'")
     clean_conn.commit()
+
+
+def test_disagreeing_twice_keeps_one_row_with_the_latest_reason(clean_conn):
+    from cs2_insights import analytics
+
+    analytics.refresh(clean_conn)  # creates the view
+    for reason in ("It was the right play", "A wall or smoke was in the way"):
+        db.add_feedback(clean_conn, "pytest_user", MATCH_ID, 3, 500, "pytest_1", "death", "Pushed without support", reason)
+    rows = clean_conn.execute("SELECT reason FROM verdict_feedback WHERE user_id = 'pytest_user'").fetchall()
+    assert rows == [("A wall or smoke was in the way",)]
+    view = clean_conn.execute(
+        "SELECT disagreements FROM analytics.v_verdict_feedback WHERE reason = 'A wall or smoke was in the way' AND verdict = 'Pushed without support'"
+    ).fetchone()
+    assert view[0] >= 1
+    clean_conn.execute("DELETE FROM verdict_feedback WHERE user_id = 'pytest_user'")
+    clean_conn.commit()

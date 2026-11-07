@@ -173,6 +173,21 @@ CREATE TABLE IF NOT EXISTS user_matches (
     PRIMARY KEY (user_id, match_id)
 );
 
+-- Verdicts a user disagreed with, to find where the models are wrong.
+CREATE TABLE IF NOT EXISTS verdict_feedback (
+    feedback_id  bigserial PRIMARY KEY,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    user_id      text NOT NULL,
+    match_id     text NOT NULL,
+    round        integer NOT NULL,
+    tick         integer NOT NULL,
+    steamid      text NOT NULL,
+    kind         text NOT NULL,   -- death / coverage / clutch / buy_call
+    verdict      text NOT NULL,
+    reason       text NOT NULL,
+    UNIQUE (user_id, match_id, tick, steamid, kind)
+);
+
 -- App settings that should survive restarts, e.g. which player "me" is.
 CREATE TABLE IF NOT EXISTS settings (
     key    text PRIMARY KEY,

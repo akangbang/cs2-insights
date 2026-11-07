@@ -391,7 +391,7 @@ def render_round(report: Report, number: int) -> None:
         if deaths.empty:
             st.markdown("🛡️ You survived the round.")
         for _, death in deaths.iterrows():
-            death_card(death, report)
+            death_card(death, report, where="round")
 
 
 def theme_mode() -> str:
@@ -441,6 +441,29 @@ def render_scorecards(report: Report, past: pd.DataFrame, match_id: str | None) 
 
 SHORT_LABELS = {fights.REPEEK: "re-peek", fights.ALONE: "pushed alone", fights.SHOULD_SAVE: "lost gear in a lost round"}
 DEATH_ICONS = {"Traded": "✅", "Avoidable": "⚠️", "Teammates didn't trade": "🤝", "Lost a duel": "⚔️", "Other": "•"}
+
+
+DISAGREE_REASONS = ["A wall or smoke was in the way", "It was the right play", "The facts look wrong", "Something else"]
+
+
+def disagree_button(report: Report, kind: str, verdict: str, round_: int, tick: int, where: str = "tab") -> None:
+    """Let the player flag a verdict that looks wrong. `where` keeps widget keys unique when a card appears twice."""
+    if database() is None or not report.match_id:
+        return
+    key = f"disagree_{kind}_{where}_{report.match_id}_{report.steamid}_{tick}"
+    if st.session_state.get(key):
+        st.caption("👎 Noted, thanks. This helps find where Halftime gets it wrong.")
+        return
+    with st.popover("👎 Disagree"):
+        st.caption("What looks wrong?")
+        for i, reason in enumerate(DISAGREE_REASONS):
+            if st.button(reason, key=f"{key}_{i}"):
+                try:
+                    db.add_feedback(database(), current_user(), report.match_id, int(round_), int(tick), report.steamid, kind, verdict, reason)
+                except Exception:
+                    database().rollback()
+                st.session_state[key] = True
+                st.rerun()
 
 
 def watch_command(tick: int) -> str:
@@ -505,7 +528,7 @@ def render_deaths(report: Report, mode: str) -> None:
                 death_card(death, report)
 
 
-def death_card(death: pd.Series, report: Report) -> None:
+def death_card(death: pd.Series, report: Report, where: str = "tab") -> None:
     group = DEATH_GROUPS.get(death["label"], "Other")
     before, after = death["win_before"], death["win_before"] - death["cost"]
     with st.container(border=True):
@@ -524,6 +547,7 @@ def death_card(death: pd.Series, report: Report) -> None:
             if sure:
                 st.caption(describe(*sure))
             watch_hint(death["tick"])
+            disagree_button(report, "death", death["label"], death["round"], death["tick"], where)
         with picture:
             render_moment_map(death, report)
 
@@ -694,6 +718,7 @@ def cover_card(row: pd.Series, report: Report) -> None:
         if len(death):
             render_moment_map(death.iloc[0], report)
         watch_hint(row["tick"])
+        disagree_button(report, "coverage", row["verdict"], row["round"], row["tick"])
 
 
 def render_buy_calls(report: Report) -> None:
@@ -710,6 +735,7 @@ def render_buy_calls(report: Report) -> None:
         with st.container(border=True):
             st.markdown(f"⚠️ **Round {call['round']}** — {call['grade']}  \n{call_detail(call)}")
             st.caption(describe(*call_confidence(call)))
+            disagree_button(report, "buy_call", call["grade"], call["round"], call["round"])
     right = calls[calls["grade"] == GOOD_CALL]
     if len(right):
         st.markdown(f"✅ **{len(right)} right call{'s' if len(right) != 1 else ''}:** rounds "
@@ -924,6 +950,8 @@ def render_clutches(report: Report) -> None:
                 if sure:
                     st.caption(describe(*sure))
                 watch_hint(c["tick"])
+                if c["outcome"] != "Won":
+                    disagree_button(report, "clutch", c["verdict"], c["round"], c["tick"])
 
     st.markdown("#### Opening duels")
     od = report.openings
