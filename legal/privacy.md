@@ -14,7 +14,7 @@ When you upload a demo or choose one from your CS2 replays folder, Halftime read
 - at the moment of each kill, where each player stood and which way they were aiming;
 - grenades thrown, who flashes blinded and for how long, and grenade damage.
 
-If you link your Steam match history, we also store your **Steam ID**, your **match history authentication code** and the **share codes** of your matches, so we can show which matches are ready to analyze.
+If you link your Steam match history, we also store your **Steam ID**, your **match history authentication code** and the **share codes** of your matches, so we can show which matches are ready to analyze. The authentication code is stored **encrypted**, with a key kept outside the database.
 
 We do **not** collect your Steam password, payment details (handled by our payment provider if you subscribe), chat messages, voice or anything outside the demo file.
 
@@ -45,7 +45,10 @@ Data is stored in a PostgreSQL database [location to be confirmed: currently on 
 
 ## Your choices
 
-- **Delete your data:** email [contact email] with your Steam ID and we'll remove your linked account and your rows from stored matches.
+- **Delete your data yourself** on the **Your data** page:
+  - *Forget my player* replaces your Steam ID in every stored match with a random ID and removes your name. The match numbers themselves stay, anonymous, because the other nine players' reports depend on them; nothing links them back to you. It also removes a linked Steam match history.
+  - *Delete my account data* removes your settings, your usage history, your disagreements and any match only you added.
+- **Ask us instead:** email [contact email] with your Steam ID, for example if you never used Halftime but appear in someone else's match.
 - **Unlink match history:** ask us, or change your match history authentication code in Steam, which stops any further access.
 
 ## Services we use
