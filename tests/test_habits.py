@@ -80,3 +80,31 @@ def test_a_users_habits_compare_with_the_whole_pool():
     alone = build_habits(mine, steamid)
     own = pd.concat([m.deaths for m in mine])
     assert alone.pool_traded == pytest.approx(own["trade_seconds"].le(2).mean())
+
+
+def test_spacing_habit_compares_your_far_deaths_with_the_pool():
+    """Uses stored matches: the player with the most far/alone deaths relative to the pool gets the habit or not, consistently."""
+    try:
+        conn = db.connect()
+    except Exception:
+        pytest.skip("PostgreSQL not running")
+    from cs2_insights import spacing
+
+    matches = [m for m in db.load_matches(conn) if len(m.deaths)]
+    deaths, chances, _ = db.pool_fights(conn)
+    conn.commit()
+    played = pd.concat([m.player_rounds.drop_duplicates("steamid") for m in matches])["steamid"].value_counts()
+    if played.empty or played.iat[0] < MIN_MATCHES:
+        pytest.skip("no player with enough stored matches")
+    steamid = played.index[0]
+    habits = build_habits([m for m in matches if steamid in set(m.player_rounds["steamid"])], steamid, pool=(deaths, chances))
+    mine = spacing.death_spacing(habits.deaths, chances)
+    share = mine["band"].isin(spacing.BAND_LABELS[2:]).mean()
+    pool_share = spacing.death_spacing(deaths, chances)["band"].isin(spacing.BAND_LABELS[2:]).mean()
+    titles = [h.title for h in habits.fixes] + [h.title for h in habits.strengths]
+    if share >= pool_share + 0.05 and (mine["band"].isin(spacing.BAND_LABELS[2:])).sum() >= 2:
+        assert "You die far from your teammates" in titles
+    elif share <= pool_share - 0.05:
+        assert "You fight close to your teammates" in titles
+    else:
+        assert not {"You die far from your teammates", "You fight close to your teammates"} & set(titles)

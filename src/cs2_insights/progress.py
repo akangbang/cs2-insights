@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from cs2_insights import fights
+from cs2_insights import fights, spacing
 from cs2_insights.demo import ParsedDemo
 from cs2_insights.fights import FightModel, coverage, judge_deaths
 from cs2_insights.grade import SHOULD_FORCE, SHOULD_SAVE, grade_decisions
@@ -18,6 +18,7 @@ FOCUS = {
     "coverage": ("Being in position to trade", "set_up_rate", False),
     "team_flash": ("Flashing teammates", "team_flashes", True),
     "unused": ("Dying with unused grenades", "unused_deaths", True),
+    "spacing": ("Dying far from teammates", "far_deaths", True),
     "buy_calls": ("Wrong buy calls", "wrong_calls", True),
 }
 
@@ -54,6 +55,8 @@ def match_numbers(parsed: ParsedDemo, steamid: str, model: FightModel | None = N
             "coverage_score": float(cover["chance"].mean()) if len(cover) else None,
             "set_up_rate": float(set_up.mean()) if len(cover) else None,
             "unused_deaths": int((mine.get("unused_utility", pd.Series(0, index=mine.index)) >= 400).sum()),
+            "far_deaths": int(spacing.death_spacing(mine, parsed.trade_chances)["band"].isin(spacing.BAND_LABELS[2:]).sum())
+            if len(mine) else 0,
         })
     if len(parsed.utility):
         u = parsed.utility[parsed.utility["steamid"] == steamid]

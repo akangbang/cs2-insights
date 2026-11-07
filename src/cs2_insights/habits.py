@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from cs2_insights import fights
+from cs2_insights import fights, spacing
 from cs2_insights.demo import ParsedDemo
 from cs2_insights.fights import FightModel, coverage, judge_deaths, setup_scores
 from cs2_insights.grade import GOOD_CALL, SAVE, SHOULD_FORCE, SHOULD_SAVE, economy_states, grade_decisions
@@ -26,6 +26,7 @@ GERUND = {"save": "saving", "force": "forcing"}
 TRADED_MARGIN = 0.03
 # An avoidable-death habit needs at least this many examples.
 MIN_DEATHS_FOR_HABIT = 2
+SPACING_MARGIN = 0.05  # your share of far/alone deaths must differ from the pool's by this much to count
 DEATH_TIPS = {
     fights.REPEEK: "After a kill, move: fall back or swing a different angle.",
     fights.ALONE: "Don't clear the next angle until a teammate is close enough to trade you.",
@@ -255,6 +256,8 @@ def _fight_habits(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.Da
         elif habits.coverage_grade in ("A", "B"):
             habits.strengths.append(Habit(f"You cover your teammates well (coverage {habits.coverage_grade})", detail, 0.0, "good"))
 
+    _spacing_habit(habits, pool_deaths, pool_chances)
+
     traded = deaths["label"] == fights.TRADED
     pool_traded = pool_deaths["trade_seconds"].le(fights.TRADE_SECONDS).mean() if len(pool_deaths) else 0.0
     habits.pool_traded = float(pool_traded)
@@ -280,6 +283,33 @@ def _buy_tip(made: str, situation: str) -> str:
 def checklist(habits: Habits, n: int = 3) -> list[str]:
     """The top habits as one-line actions for the next match."""
     return [h.tip for h in habits.fixes if h.tip][:n]
+
+
+def _spacing_habit(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.DataFrame) -> None:
+    """Dying far from teammates (nobody close enough to trade), compared with the pool."""
+    deaths, m = habits.deaths, habits.fight_matches
+    if deaths.empty or "victim_x" not in deaths or pool_deaths.empty:
+        return
+    pool = spacing.death_spacing(pool_deaths, pool_chances)
+    rates = spacing.spacing_rates(pool)
+    mine = spacing.death_spacing(deaths, pool_chances)
+    far_bands = spacing.BAND_LABELS[2:]
+    far = mine[mine["band"].isin(far_bands)]
+    share, pool_share = len(far) / len(mine), float(pool["band"].isin(far_bands).mean())
+    detail = (f"{len(far)} of your {len(mine)} deaths in {m} matches happened with no teammate within 600 units "
+              f"({share:.0%}; across the pool it's {pool_share:.0%}). Deaths with a teammate within 300 units get traded "
+              f"{rates[spacing.BAND_LABELS[0]]:.0%} of the time; alone, {rates[spacing.BAND_LABELS[-1]]:.0%}.")
+    if len(far) >= MIN_DEATHS_FOR_HABIT and share >= pool_share + SPACING_MARGIN:
+        # Rounds lost: each far death, times the trade chance it gave up, times what a trade wins back (about that death's cost).
+        costs = deaths.set_index(["match_id", "tick", "victim"])["cost"]
+        gave_up = sum((rates[spacing.BAND_LABELS[0]] - rates[r.band]) * costs.get((r.match_id, r.tick, r.victim), 0.0)
+                      for r in far.itertuples())
+        habits.fixes.append(Habit(
+            "You die far from your teammates", detail + " Play close enough that someone can trade you.", gave_up / m,
+            tip="Take fights with a teammate a few steps behind you (under 300 units).", examples=len(far),
+        ))
+    elif share <= pool_share - SPACING_MARGIN:
+        habits.strengths.append(Habit("You fight close to your teammates", detail, 0.0, "good"))
 
 
 def _why(made: str, situation: str) -> str:

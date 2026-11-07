@@ -61,9 +61,9 @@ Real output from real matches. Player names are replaced with stand-ins.
 - **Disagree button.** Verdict cards let a player flag a call that looks wrong and say why (a wall or smoke, it was the right play, the facts look wrong). Answers feed `analytics.v_verdict_feedback`, which shows the operator which verdicts get rejected most.
 - **How accurate is it?** A page that tests the models in the open: for each match they're fitted on the others and predict the one they haven't seen, with charts of predicted against actual and notes on what the test doesn't prove.
 - **"How sure are we?" labels.** Avoidable deaths, clutches, buy calls, coverage grades and habits each carry a high, medium or low label with a one-line reason, so a tip from thin evidence doesn't look as solid as one with plenty behind it. These are rules of thumb, not statistical guarantees.
-- **Your habits.** Patterns across your matches, ranked by rounds lost per match and compared with every player in the pool, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
+- **Your habits.** Patterns across your matches (including dying far from your teammates), ranked by rounds lost per match and compared with every player in the pool, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
   - **Before your next match:** your top habits as a short checklist of actions, with your focus, that you can tick off or save as a text file for a second screen.
-  - **Weekly focus:** pick one habit (re-peeks, pushing alone, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
+  - **Weekly focus:** pick one habit (re-peeks, pushing alone, dying far from teammates, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
 - **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.

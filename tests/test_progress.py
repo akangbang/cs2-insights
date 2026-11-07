@@ -22,5 +22,6 @@ def test_recent_average_skips_the_current_match():
 
 def test_every_focus_points_at_a_tracked_number():
     row = match_numbers(_match("m", SAVE_AFTER_PISTOL), ME)
-    tracked = set(row) | {"deaths", "avoidable", "repeeks", "pushed_alone", "lost_gear", "set_up_rate", "unused_deaths", "team_flashes"}
+    tracked = set(row) | {"deaths", "avoidable", "repeeks", "pushed_alone", "lost_gear", "set_up_rate", "unused_deaths", "team_flashes",
+                          "far_deaths"}
     assert {column for _, column, _ in FOCUS.values()} <= tracked
