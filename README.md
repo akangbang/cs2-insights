@@ -37,7 +37,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Clutches tab](docs/screenshots/clutches.png)
 
-**Your habits and your focus.** The habits that cost the most rounds, a short checklist for your next match, and one habit you've chosen to work on, tracked match by match.
+**Your habits and your focus.** A recap of your last few matches against the ones before, the habits that cost the most rounds, a short checklist for your next match, and one habit you've chosen to work on, tracked match by match.
 
 ![Habits page with a weekly focus](docs/screenshots/habits.png)
 
@@ -62,6 +62,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 - **How accurate is it?** A page that tests the models in the open: for each match they're fitted on the others and predict the one they haven't seen, with charts of predicted against actual and notes on what the test doesn't prove.
 - **"How sure are we?" labels.** Avoidable deaths, clutches, buy calls, coverage grades and habits each carry a high, medium or low label with a one-line reason, so a tip from thin evidence doesn't look as solid as one with plenty behind it. These are rules of thumb, not statistical guarantees.
 - **Your habits.** Patterns across your matches (including dying far from your teammates and flashing them for nothing), ranked by rounds lost per match and compared with every player in the pool, e.g. *"You re-peek after getting a kill: 10 times in 4 matches."*
+  - **Recap:** your last matches (up to 5) against the same number before them: win rate, avoidable deaths, what improved most, what slipped most, and one click to make the slip your focus. It compares matches rather than calendar weeks because a demo doesn't say when it was played; a change only counts when it's bigger than your normal match-to-match swing.
   - **Before your next match:** your top habits as a short checklist of actions, with your focus, that you can tick off or save as a text file for a second screen.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, dying far from teammates, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
@@ -143,6 +144,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `app.py` | Streamlit app: match report, habits, legal pages |
 | `src/cs2_insights/demo.py` | Demo parsing: rounds, teams, players, deaths, positions, grenades and flashes |
 | `src/cs2_insights/fights.py` | Death verdicts, trade chance, coverage grade, clutches and opening duels |
+| `src/cs2_insights/recap.py` | Your latest matches against the ones before |
 | `src/cs2_insights/utility.py` | Grenade and flash summary per match, and the team flash review |
 | `src/cs2_insights/progress.py` | Match-by-match history for progress and the weekly focus |
 | `src/cs2_insights/report.py` | Per-match report, reasons and key moments |

@@ -27,6 +27,7 @@ from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
 from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, completeness_warning, explain_parse_error, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
+from cs2_insights.recap import build_recap
 from cs2_insights.utility import FLASH_COST_TEAMMATE, FLASH_FIXES, FLASH_TRADE_OFF, FLASH_WASTED, UNUSED_WORTH_MENTION
 from cs2_insights.report import (
     CLUTCH_FIXES,
@@ -1442,9 +1443,11 @@ def habits_page() -> None:
     if outdated:
         st.caption(f"{outdated} stored match{'es were' if outdated != 1 else ' was'} parsed before deaths were tracked; "
                    "re-add your replays from the sidebar to include them.")
+    past = history(matches, labels[picked], fight_model, slope)
+    render_recap(past, labels[picked])
     render_habit_scorecards(habits)
     render_checklist(habits)
-    render_focus(matches, labels[picked], fight_model, slope, mode)
+    render_focus(past, labels[picked], mode)
 
     if habits.matches < MIN_MATCHES:
         st.info(f"Habits need at least {MIN_MATCHES} of your matches; you have {habits.matches}. Add more replays from the sidebar.")
@@ -1511,7 +1514,53 @@ def render_checklist(habits) -> None:
                            help="Keep it open on a second screen while you play.", on_click=lambda: track("checklist_saved"))
 
 
-def render_focus(matches: list, steamid: str, model: FightModel, slope: float, mode: str) -> None:
+def render_recap(past: pd.DataFrame, steamid: str) -> None:
+    """Your latest matches against the same number before them: what got better, what slipped, what to work on."""
+    recap = build_recap(past)
+    if recap is None:
+        return
+    track("recap_viewed", steamid=steamid, once=True)
+    against = f"vs prior {recap.window}"
+
+    def moved_tile(column, title: str, change) -> None:
+        with column.container(border=True):
+            if change is None:
+                st.metric(title, "–")
+                st.caption("Nothing moved clearly.")
+                return
+            difference = change.difference
+            delta = f"{difference * 100:+.0f} pts" if change.kind == "rate" else f"{difference:+.1f}"
+            st.metric(title, change.value(), f"{delta} {against}", delta_color="inverse" if change.lower_is_better else "normal")
+            st.caption(change.label + ("" if change.kind == "rate" else ", per match"))
+
+    with st.container(border=True):
+        st.markdown(f"#### 🗓️ Your recap: last {recap.window} matches")
+        st.markdown(recap.headline)
+        cols = st.columns(4)
+        with cols[0].container(border=True):
+            st.metric("Win rate", f"{recap.win_rate:.0%}", f"{(recap.win_rate - recap.earlier_win_rate) * 100:+.0f} pts {against}")
+            st.caption("Share of these matches your team won.")
+        with cols[1].container(border=True):
+            if recap.avoidable is None or recap.earlier_avoidable is None:
+                st.metric("Avoidable deaths", "–")
+            else:
+                st.metric("Avoidable deaths", f"{recap.avoidable:.1f}", f"{recap.avoidable - recap.earlier_avoidable:+.1f} {against}", delta_color="inverse")
+            st.caption("Per match.")
+        moved_tile(cols[2], "Most improved", recap.improved)
+        moved_tile(cols[3], "Slipped most", recap.slipped)
+        if recap.slipped and recap.slipped.key != saved_setting("focus") and database() is not None:
+            if st.button(f"🎯 Make \"{recap.slipped.label.lower()}\" my focus"):
+                save_setting("focus", recap.slipped.key)
+                track("focus_set", steamid=steamid, detail=recap.slipped.key)
+                st.rerun()
+        note = (f"Compares your last {recap.window} matches with the {recap.window} before them, not calendar weeks, because a demo doesn't "
+                "say when it was played. A change only counts when it's bigger than your normal match-to-match swing.")
+        if recap.skipped_uploads:
+            note += f" {recap.skipped_uploads} uploaded demo{'s are' if recap.skipped_uploads != 1 else ' is'} left out, since Halftime can't tell when they were played."
+        st.caption(note)
+
+
+def render_focus(past: pd.DataFrame, steamid: str, mode: str) -> None:
     """Pick one habit to work on; see it match by match against your average."""
     st.subheader("🎯 Your focus")
     keys = list(FOCUS)
@@ -1527,7 +1576,6 @@ def render_focus(matches: list, steamid: str, model: FightModel, slope: float, m
         save_setting("focus", choice)
         track("focus_set", steamid=steamid, detail=choice)
     label, column, lower_is_better = FOCUS[choice]
-    past = history(matches, steamid, model, slope)
     if past.empty or column not in past or past[column].dropna().empty:
         st.write("No data for this habit yet. Re-add your replays from the sidebar.")
         return
