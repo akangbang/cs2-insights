@@ -98,3 +98,8 @@ Revisit if: The pool grows past ~100 matches, or kills that didn't happen can be
 Context: The user asked for a weekly recap. A demo doesn't reliably say when it was played: the stored time is when it was parsed, and uploads carry no date.
 Choice + why: Compare the last matches (up to 5) with the same number before them, ordered by Valve match ID, which increases over time. Uploaded demos are left out and counted in a note, because their place in time is unknown. A change only counts when it's at least one standard error, so ordinary match-to-match swings aren't reported as progress.
 Revisit if: Match dates become available (Steam match history, or FACEIT's API), which would allow a real calendar week and include uploads.
+
+## 2026-11-08 — Replays show a best case for deaths; lost-cause verdict left as is
+Context: Replaying a death needs a counterfactual, but a demo can't show that a player would have survived by playing differently. Measuring the replay on stored matches also showed that "Died with gear in a lost round" is sometimes wrong by its own numbers: of 120 such deaths that could be valued, hiding was better in 73, 21 were too close to call, and fighting on was better in 26.
+Choice + why: Deaths show what happened, the same death with a teammate close enough to trade (at the pool's measured trade rate), and staying alive, labelled a best case. Where a lost-cause death's numbers favour fighting, the replay says so and the card drops its "hide next time" advice. The verdict itself is unchanged, because changing it would change avoidable-death counts and habits, which is a product decision.
+Revisit if: The player decides lost-cause deaths should only count as avoidable when hiding is actually better.

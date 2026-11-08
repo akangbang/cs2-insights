@@ -556,6 +556,7 @@ def render_deaths(report: Report, mode: str) -> None:
 def death_card(death: pd.Series, report: Report, where: str = "tab") -> None:
     group = DEATH_GROUPS.get(death["label"], "Other")
     before, after = death["win_before"], death["win_before"] - death["cost"]
+    replay = death_replay(death, report.fight_model, pool_spacing(history_stamp())[0][spacing.BAND_LABELS[0]])
     with st.container(border=True):
         text, picture = st.columns([3, 2])
         with text:
@@ -566,7 +567,7 @@ def death_card(death: pd.Series, report: Report, where: str = "tab") -> None:
                 st.markdown("\n".join(f"- {reason}" for reason in reasons))
             if group != "Traded":
                 st.markdown(f"**Impact:** your team's chance to win the round went from **{before:.0%} → {after:.0%}**.")
-            if death["label"] in DEATH_FIXES:
+            if death["label"] in DEATH_FIXES and not (replay and replay.disputes_verdict):
                 st.markdown(f"**Next time:** {DEATH_FIXES[death['label']]}")
             sure = death_confidence(death)
             if sure:
@@ -575,6 +576,7 @@ def death_card(death: pd.Series, report: Report, where: str = "tab") -> None:
             disagree_button(report, "death", death["label"], death["round"], death["tick"], where)
         with picture:
             render_moment_map(death, report)
+        render_replay(replay)
 
 
 COVER_GROUPS = ["You traded", "In position", "Facing away", "Too far"]
