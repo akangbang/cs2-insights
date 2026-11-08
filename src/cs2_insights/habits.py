@@ -16,6 +16,7 @@ from cs2_insights.fights import FightModel, coverage, judge_deaths, setup_scores
 from cs2_insights.grade import GOOD_CALL, SAVE, SHOULD_FORCE, SHOULD_SAVE, economy_states, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, equipment_win_rate
 from cs2_insights.report import SPLIT_BUYER_MIN, split_buy_rounds
+from cs2_insights.utility import FLASH_TRADE_OFF, review_team_flashes
 
 # Fewer matches than this and patterns are too thin to call habits.
 MIN_MATCHES = 3
@@ -26,6 +27,9 @@ GERUND = {"save": "saving", "force": "forcing"}
 TRADED_MARGIN = 0.03
 # An avoidable-death habit needs at least this many examples.
 MIN_DEATHS_FOR_HABIT = 2
+# Flashes that blinded a teammate and caught no enemy, or got one killed: this many, this often, counts as a habit.
+MIN_BAD_FLASHES = 3
+BAD_FLASHES_PER_MATCH = 1.0
 SPACING_MARGIN = 0.05  # your share of far/alone deaths must differ from the pool's by this much to count
 DEATH_TIPS = {
     fights.REPEEK: "After a kill, move: fall back or swing a different angle.",
@@ -92,7 +96,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
     """
     model = fight_model or FightModel()
     calls, splits, wasted, name, played = [], [], [], None, 0
-    my_deaths, my_cover, pool_deaths, pool_chances = [], [], [], []
+    my_deaths, my_cover, pool_deaths, pool_chances, my_flashes = [], [], [], [], []
     for parsed in matches:
         if len(parsed.deaths):
             pool_deaths.append(parsed.deaths)
@@ -119,6 +123,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
             tags = {"match_id": match["match_id"], "map": match["map"]}
             my_deaths.append(judged[judged["victim"] == steamid].assign(**tags))
             my_cover.append(coverage(judged, parsed.trade_chances, steamid, model).assign(**tags))
+            my_flashes.append(review_team_flashes(parsed.blinds, judged, steamid))
 
         for number in split_buy_rounds(parsed.player_rounds, team):
             you = me[me["round"] == number]
@@ -208,6 +213,7 @@ def build_habits(matches: list[ParsedDemo], steamid: str, slope: float = DEFAULT
                 )
             )
 
+    _team_flash_habit(habits, my_flashes)
     habits.fixes.sort(key=lambda h: h.cost, reverse=True)
     right = all_calls[all_calls["grade"] == GOOD_CALL]
     if len(all_calls):
@@ -283,6 +289,25 @@ def _buy_tip(made: str, situation: str) -> str:
 def checklist(habits: Habits, n: int = 3) -> list[str]:
     """The top habits as one-line actions for the next match."""
     return [h.tip for h in habits.fixes if h.tip][:n]
+
+
+def _team_flash_habit(habits: Habits, reviews: list[pd.DataFrame]) -> None:
+    """Flashes that blinded a teammate for nothing, or left them to die blind (utility.review_team_flashes)."""
+    reviews = [r for r in reviews if len(r)]
+    if not reviews or not habits.fight_matches:
+        return
+    review, m = pd.concat(reviews, ignore_index=True), habits.fight_matches
+    bad = review[review["verdict"] != FLASH_TRADE_OFF]
+    if len(bad) < MIN_BAD_FLASHES or len(bad) / m < BAD_FLASHES_PER_MATCH:
+        return
+    died = review[review["died_blind"]]
+    detail = f"{len(bad)} times in {m} matches your flash blinded a teammate without catching an enemy, or got them killed ({len(bad) / m:.1f} per match)."
+    if len(died):
+        detail += f" {len(died)} of those teammates died while still blind, which cost about {died['death_cost'].sum():.1f} rounds."
+    habits.fixes.append(Habit(
+        "You flash your teammates", detail + " Check where your teammates are before you throw, and say so when you do.",
+        float(died["death_cost"].sum()) / m, tip="Check where your teammates are and say \"flashing\" before you throw.", examples=len(bad),
+    ))
 
 
 def _spacing_habit(habits: Habits, pool_deaths: pd.DataFrame, pool_chances: pd.DataFrame) -> None:

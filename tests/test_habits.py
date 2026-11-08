@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from cs2_insights import db
-from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
+from cs2_insights.habits import MIN_MATCHES, Habits, _team_flash_habit, build_habits, checklist
 from tests.test_grade import ECO, FULL, _team_rounds
 from cs2_insights.demo import ParsedDemo
 
@@ -108,3 +108,28 @@ def test_spacing_habit_compares_your_far_deaths_with_the_pool():
         assert "You fight close to your teammates" in titles
     else:
         assert not {"You die far from your teammates", "You fight close to your teammates"} & set(titles)
+
+
+def _flashes(verdicts_and_costs):
+    return pd.DataFrame([{"verdict": v, "died_blind": c > 0, "death_cost": c} for v, c in verdicts_and_costs])
+
+
+def test_team_flash_habit_counts_flashes_that_only_hurt_the_team():
+    habits = Habits(name="me", matches=3, calls=pd.DataFrame(), fight_matches=3)
+    _team_flash_habit(habits, [_flashes([("Wasted", 0.0), ("Cost a teammate", 0.3)]), _flashes([("Wasted", 0.0), ("Trade-off", 0.0)])])
+    habit = habits.fixes[0]
+    assert habit.title == "You flash your teammates" and habit.examples == 3
+    assert habit.cost == pytest.approx(0.1)  # only the death counts as rounds lost
+    assert habit.tip
+
+
+def test_a_few_stray_flashes_are_not_a_habit():
+    habits = Habits(name="me", matches=4, calls=pd.DataFrame(), fight_matches=4)
+    _team_flash_habit(habits, [_flashes([("Wasted", 0.0), ("Wasted", 0.0), ("Wasted", 0.0)])])
+    assert not habits.fixes  # three in four matches is under one a match
+
+
+def test_flashes_that_also_caught_enemies_are_not_a_habit():
+    habits = Habits(name="me", matches=3, calls=pd.DataFrame(), fight_matches=3)
+    _team_flash_habit(habits, [_flashes([("Trade-off", 0.0)] * 6)])
+    assert not habits.fixes
