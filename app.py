@@ -27,7 +27,7 @@ from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
 from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, completeness_warning, explain_parse_error, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
-from cs2_insights.utility import UNUSED_WORTH_MENTION
+from cs2_insights.utility import FLASH_COST_TEAMMATE, FLASH_FIXES, FLASH_TRADE_OFF, FLASH_WASTED, UNUSED_WORTH_MENTION
 from cs2_insights.report import (
     CLUTCH_FIXES,
     clutch_reasons,
@@ -980,6 +980,88 @@ def render_spacing(report: Report, mode: str) -> None:
                         "Halftime only sees deaths, so it can't measure that yet, and doesn't grade crossfires until it can.")
 
 
+FLASH_ICONS = {FLASH_COST_TEAMMATE: "❌", FLASH_WASTED: "⚠️", FLASH_TRADE_OFF: "➖"}
+FLASH_ORDER = [FLASH_COST_TEAMMATE, FLASH_WASTED, FLASH_TRADE_OFF]
+FLASH_ROLES = ["You", "Teammate", "Enemy also blinded"]
+FLASH_CARDS_SHOWN = 3
+
+
+def flash_map(flash: pd.Series, names: dict, mode: str) -> alt.Chart | None:
+    """Top-down positions when a flash went off: thrower, blinded teammate, enemies it also caught. No walls."""
+    palette = COLORS[mode]
+    if any(pd.isna(flash.get(k)) for k in ("thrower_x", "thrower_y", "blinded_x", "blinded_y")):
+        return None
+    points = pd.DataFrame([
+        {"role": "You", "x": flash["thrower_x"], "y": flash["thrower_y"], "label": "You"},
+        {"role": "Teammate", "x": flash["blinded_x"], "y": flash["blinded_y"], "label": names.get(flash["blinded"], "Teammate")},
+        *[{"role": "Enemy also blinded", "x": x, "y": y, "label": "Enemy"} for x, y in flash["enemy_spots"]],
+    ])
+    xs, ys = points["x"].astype(float), points["y"].astype(float)
+    half = max(xs.max() - xs.min(), ys.max() - ys.min()) / 2 + 250
+    cx, cy = (xs.max() + xs.min()) / 2, (ys.max() + ys.min()) / 2
+    x = alt.X("x:Q", scale=alt.Scale(domain=[cx - half, cx + half]), axis=None)
+    y = alt.Y("y:Q", scale=alt.Scale(domain=[cy - half, cy + half]), axis=None)
+    link = alt.Chart(pd.DataFrame([{"x": flash["thrower_x"], "y": flash["thrower_y"], "x2": flash["blinded_x"], "y2": flash["blinded_y"]}])).mark_rule(
+        strokeDash=[5, 4], strokeWidth=1.5, color=palette["text"], opacity=0.6).encode(x=x, y=y, x2="x2:Q", y2="y2:Q")
+    dots = alt.Chart(points).mark_point(filled=True, size=150, stroke=palette["surface"], strokeWidth=1.5, opacity=1).encode(
+        x=x, y=y,
+        color=alt.Color("role:N", legend=None, scale=alt.Scale(domain=FLASH_ROLES, range=[palette["Your team"], palette["neutral"], palette["Opponent"]])),
+        shape=alt.Shape("role:N", legend=None, scale=alt.Scale(domain=FLASH_ROLES, range=["circle", "circle", "triangle-up"])),
+        tooltip=[alt.Tooltip("label:N", title="Player"), alt.Tooltip("role:N", title="Role")])
+    text = alt.Chart(points[points["role"] != "Enemy also blinded"]).mark_text(align="left", dx=9, dy=-7, fontSize=11, color=palette["text"]).encode(
+        x=x, y=y, text="label:N")
+    return alt.layer(link, dots, text).properties(width=230, height=230).configure_view(stroke=palette["band"])
+
+
+def flash_reasons(flash: pd.Series, name: str) -> str:
+    """The facts behind a flash verdict, in a sentence or two."""
+    caught = int(flash["enemies_caught"])
+    enemies = f"{caught} enem{'y' if caught == 1 else 'ies'}"
+    text = f"You blinded **{name}** for {flash['seconds']:.1f}s."
+    if flash["died_blind"]:
+        also = f" Your flash caught {enemies} too." if caught else ""
+        return (f"{text} They died before they could see again, which cost your team about {flash['death_cost']:.0%} of its chance "
+                f"to win the round. Being blind isn't always why someone dies, but they couldn't shoot back.{also}")
+    return f"{text} It also blinded {enemies}." if caught else f"{text} It didn't blind any enemy for a second or more."
+
+
+def flash_card(flash: pd.Series, report: Report, mode: str) -> None:
+    verdict = flash["verdict"]
+    with st.container(border=True):
+        words, picture = st.columns([3, 2])
+        with words:
+            st.markdown(f"{FLASH_ICONS[verdict]} **Round {flash['round']} · {verdict}**")
+            st.markdown(flash_reasons(flash, report.names.get(flash["blinded"], "a teammate")))
+            st.markdown(f"**Next time:** {FLASH_FIXES[verdict]}")
+            watch_hint(flash["tick"])
+            disagree_button(report, "team_flash", verdict, flash["round"], flash["tick"], where=str(flash["blinded"]))
+        with picture:
+            chart = flash_map(flash, report.names, mode)
+            if chart is not None:
+                st.altair_chart(chart, width="content")
+                st.caption("Blue = you · grey = your teammate · orange ▲ = enemies also blinded. Where everyone stood "
+                           "when the flash went off, seen from above; walls aren't drawn.")
+
+
+def render_flash_review(report: Report, mode: str) -> None:
+    st.markdown("#### ⚡ Flash review")
+    review = report.flash_review
+    if review.empty:
+        st.write("You didn't blind a teammate for a second or more. Clean flashes.")
+        return
+    counts = review["verdict"].value_counts()
+    st.markdown(f"Your flashes blinded a teammate **{len(review)}** time{'s' if len(review) != 1 else ''}: "
+                + " · ".join(f"{FLASH_ICONS[v]} {counts[v]} {v.lower()}" for v in FLASH_ORDER if v in counts))
+    ordered = review.assign(rank=review["verdict"].map(FLASH_ORDER.index)).sort_values(["rank", "death_cost", "seconds"], ascending=[True, False, False])
+    rows = [row for _, row in ordered.iterrows()]
+    for flash in rows[:FLASH_CARDS_SHOWN]:
+        flash_card(flash, report, mode)
+    if len(rows) > FLASH_CARDS_SHOWN:
+        with st.expander(f"{len(rows) - FLASH_CARDS_SHOWN} more"):
+            for flash in rows[FLASH_CARDS_SHOWN:]:
+                flash_card(flash, report, mode)
+
+
 def render_utility(report: Report, mode: str) -> None:
     u = report.utility
     if not u:
@@ -1002,26 +1084,17 @@ def render_utility(report: Report, mode: str) -> None:
         st.metric("Grenade damage", u["utility_damage"], f"{u['utility_damage'] - u['match_utility_damage']:+.0f} vs match average")
         st.caption("HE and molotov damage to enemies.")
 
-    flashes = report.team_flashes
-    left, right = st.columns(2)
-    with left:
-        st.markdown("#### ⚠️ Flashes that blinded your team")
-        if flashes.empty:
-            st.write("None. Clean flashes.")
-        for f in flashes.itertuples():
-            st.markdown(f"- Round {f.round}: blinded **{report.names.get(f.blinded, 'a teammate')}** for {f.seconds:.1f}s · `{watch_command(f.tick)}`")
-        if len(flashes):
-            st.caption("Next time: say \"flashing\" before you throw, and throw over your teammate's head, not past his face.")
-    with right:
-        st.markdown("#### 💸 Died holding grenades")
-        unused = report.deaths[report.deaths["unused_utility"] >= UNUSED_WORTH_MENTION] if len(report.deaths) and "unused_utility" in report.deaths else pd.DataFrame()
-        if unused.empty:
-            st.write("You used your utility before your fights.")
-        for d in unused.itertuples():
-            st.markdown(f"- Round {d.round} · {clock(d.round_seconds)} · {place_label(d.victim_place)}: died with **${d.unused_utility:,}** of grenades unused")
-        if len(unused):
-            st.caption(f"${int(unused['unused_utility'].sum()):,} of grenades in total. Throw a flash or molotov before taking the fight, "
-                       "or drop them to a teammate.")
+    render_flash_review(report, mode)
+
+    st.markdown("#### 💸 Died holding grenades")
+    unused = report.deaths[report.deaths["unused_utility"] >= UNUSED_WORTH_MENTION] if len(report.deaths) and "unused_utility" in report.deaths else pd.DataFrame()
+    if unused.empty:
+        st.write("You used your utility before your fights.")
+    for d in unused.itertuples():
+        st.markdown(f"- Round {d.round} · {clock(d.round_seconds)} · {place_label(d.victim_place)}: died with **${d.unused_utility:,}** of grenades unused")
+    if len(unused):
+        st.caption(f"${int(unused['unused_utility'].sum()):,} of grenades in total. Throw a flash or molotov before taking the fight, "
+                   "or drop them to a teammate.")
 
 
 CLUTCH_ICONS = {

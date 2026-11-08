@@ -29,7 +29,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Spacing tab](docs/screenshots/spacing.png)
 
-**Your grenades and flashes.** Thrown, enemies and teammates flashed, damage, and deaths with grenades still in your pocket, all against the match average.
+**Your grenades and flashes.** Thrown, enemies and teammates flashed, damage, and deaths with grenades still in your pocket, all against the match average. Every flash that blinded a teammate gets a verdict and a picture of where everyone stood.
 
 ![Utility tab](docs/screenshots/utility.png)
 
@@ -54,7 +54,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Your deaths:** each one labelled *traded*, *avoidable* (re-peeked after a kill, pushed with nobody close enough to trade, died with gear in a lost round), *teammates didn't trade* or *lost a duel*, with the reasons, the cost to your team's round win chance, a moment map, and a one-click-copy console command to jump to it in the demo.
   - **Coverage grade (A–F):** how often you were close enough to trade a teammate and aiming at his killer, graded against every player in the pool, with moments to repeat and to fix.
   - **Spacing:** how far your nearest teammate was each time you died, and how often deaths at that distance get traded across the pool (about 30% within 300 units, 2% alone), with the trades you'd likely have gotten by playing closer. Crossfires are shown but not graded: in the pool so far they didn't lead to more quick trades than playing the same line (see `decisions.md`).
-  - **Utility:** grenades thrown, enemies flashed per flash, teammates flashed, grenade damage, and deaths with unused grenades, against the match average.
+  - **Utility:** grenades thrown, enemies flashed per flash, teammates flashed, grenade damage, and deaths with unused grenades, against the match average. The **flash review** judges every flash that blinded a teammate: *cost a teammate* (they died still blind), *wasted* (no enemy caught) or *trade-off* (it caught an enemy too).
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
@@ -143,7 +143,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `app.py` | Streamlit app: match report, habits, legal pages |
 | `src/cs2_insights/demo.py` | Demo parsing: rounds, teams, players, deaths, positions, grenades and flashes |
 | `src/cs2_insights/fights.py` | Death verdicts, trade chance, coverage grade, clutches and opening duels |
-| `src/cs2_insights/utility.py` | Grenade and flash summary per match |
+| `src/cs2_insights/utility.py` | Grenade and flash summary per match, and the team flash review |
 | `src/cs2_insights/progress.py` | Match-by-match history for progress and the weekly focus |
 | `src/cs2_insights/report.py` | Per-match report, reasons and key moments |
 | `src/cs2_insights/grade.py` | Force-or-save grader (money simulation) |
