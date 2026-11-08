@@ -187,3 +187,14 @@ def test_a_saved_gun_is_worth_more_when_the_team_is_poor():
 def test_saving_on_the_last_round_of_a_half_is_worth_nothing():
     last = clutches(*_clutch_round(final_victim="a5", rounds=1), MODEL).iloc[0]
     assert last["save_value"] == 0 and last["save_rounds"] == 0
+
+
+def test_a_lost_cause_death_values_the_gear_like_a_clutch_does():
+    deaths, players, rounds = _clutch_round(final_victim="a5", next_money=2_500)
+    clutch = clutches(deaths, players, rounds, MODEL).iloc[0]
+    judged = pd.DataFrame({"round": [clutch["round"]] * 2, "victim_team": [clutch["team"]] * 2, "side": [clutch["side"]] * 2,
+                           "victim_equip": [clutch["gear"]] * 2, "label": [fights.SHOULD_SAVE, fights.DUEL]})
+    out = fights.with_gear_value(judged, rounds)
+    assert out.at[0, "save_value"] == pytest.approx(clutch["save_value"], abs=0.001)
+    assert out.at[0, "save_rounds"] == clutch["save_rounds"]
+    assert out.at[1, "save_value"] == 0  # only lost-cause deaths are valued

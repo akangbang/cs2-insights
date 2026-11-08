@@ -161,7 +161,7 @@ def build_report(
     model = fight_model or FightModel()
     names = parsed.player_rounds.drop_duplicates("steamid", keep="last").set_index("steamid")["name"].to_dict()
     judged = judge_deaths(parsed.deaths, parsed.trade_chances, parsed.team_rounds, model) if len(parsed.deaths) else pd.DataFrame()
-    my_deaths = judged[judged["victim"] == steamid].reset_index(drop=True) if len(judged) else judged
+    my_deaths = fights.with_gear_value(judged[judged["victim"] == steamid].reset_index(drop=True), parsed.team_rounds, slope) if len(judged) else judged
     cover = coverage(judged, parsed.trade_chances, steamid, model) if len(parsed.trade_chances) else pd.DataFrame()
     avoidable = my_deaths[my_deaths["label"].isin(fights.AVOIDABLE)] if len(my_deaths) else my_deaths
     all_clutches = clutches(parsed.deaths, parsed.player_rounds, parsed.team_rounds, model, slope) if len(parsed.deaths) else pd.DataFrame()
