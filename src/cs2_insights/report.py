@@ -16,7 +16,7 @@ from cs2_insights import fights
 from cs2_insights.fights import FightModel, clutches, coverage, coverage_summary, judge_deaths, opening_duels
 from cs2_insights.grade import CLOSE, FORCE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, expected_win_rate, pooled_rates  # noqa: F401  (re-exported)
-from cs2_insights.utility import team_flashes, utility_summary
+from cs2_insights.utility import review_team_flashes, team_flashes, utility_summary
 
 UPSET_BELOW = 0.40
 FAVOURED_ABOVE = 0.60
@@ -57,6 +57,7 @@ class Report:
     all_deaths: pd.DataFrame = field(default_factory=pd.DataFrame)  # every judged death in the match (for moment maps)
     utility: dict = field(default_factory=dict)  # utility.utility_summary()
     team_flashes: pd.DataFrame = field(default_factory=pd.DataFrame)  # your flashes that blinded a teammate
+    flash_review: pd.DataFrame = field(default_factory=pd.DataFrame)  # utility.review_team_flashes(): a verdict for each of those
     clutches: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.clutches() where you were last alive
     openings: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.opening_duels() you were in
     steamid: str = ""
@@ -190,6 +191,7 @@ def build_report(
         all_deaths=judged,
         utility=utility_summary(parsed.utility, judged, steamid) if len(parsed.utility) else {},
         team_flashes=team_flashes(parsed.blinds, steamid),
+        flash_review=review_team_flashes(parsed.blinds, judged, steamid),
         clutches=my_clutches,
         openings=opening_duels(parsed.deaths, parsed.team_rounds, steamid) if len(parsed.deaths) else pd.DataFrame(),
         steamid=steamid,

@@ -47,6 +47,7 @@ def test_team_flash_verdicts():
     review = review_team_flashes(blinds, deaths, "me").set_index("blinded")
     assert review.at["mate1", "verdict"] == FLASH_COST_TEAMMATE and review.at["mate1", "death_cost"] == 0.19
     assert review.at["mate2", "verdict"] == FLASH_TRADE_OFF and review.at["mate2", "enemies_caught"] == 1
+    assert review.at["mate2", "enemy_spots"] == [(10.0, 10.0)]
     assert review.at["mate3", "verdict"] == FLASH_WASTED and not review.at["mate3", "died_blind"]
 
 

@@ -6,6 +6,8 @@ carried at death). Numbers are compared with the other players in the same match
 
 import pandas as pd
 
+from cs2_insights.demo import TICK_RATE
+
 # Dying with at least this much unused utility is worth pointing out.
 UNUSED_WORTH_MENTION = 400
 
@@ -15,7 +17,6 @@ FLASH_FIXES = {
     FLASH_TRADE_OFF: "It caught an enemy too, so it may have been worth it. Warn your teammate so only the enemy is blind.",
     FLASH_WASTED: "Check where your teammates are before you throw. A flash that only blinds your team gives the enemy a free fight.",
 }
-TICKS_PER_SECOND = 64
 
 
 def utility_summary(utility: pd.DataFrame, deaths: pd.DataFrame, steamid: str) -> dict:
@@ -59,22 +60,25 @@ def team_flashes(blinds: pd.DataFrame, steamid: str) -> pd.DataFrame:
 
 def review_team_flashes(blinds: pd.DataFrame, deaths: pd.DataFrame, steamid: str) -> pd.DataFrame:
     """One row per teammate this player flashed: did the flash also catch enemies, and did the teammate die blind?"""
-    columns = ["round", "tick", "blinded", "seconds", "enemies_caught", "died_blind", "death_cost", "verdict",
+    columns = ["round", "tick", "blinded", "seconds", "enemies_caught", "died_blind", "death_cost", "verdict", "enemy_spots",
                "thrower_x", "thrower_y", "blinded_x", "blinded_y"]
     hits = team_flashes(blinds, steamid)
     if hits.empty:
         return pd.DataFrame(columns=columns)
-    enemies = blinds[(blinds["thrower"] == steamid) & ~blinds["teammate"].astype(bool)].groupby("tick").size()
+    enemies = blinds[(blinds["thrower"] == steamid) & ~blinds["teammate"].astype(bool)]
     rows = []
     for hit in hits.to_dict("records"):
-        blind_until = hit["tick"] + hit["seconds"] * TICKS_PER_SECOND
+        blind_until = hit["tick"] + hit["seconds"] * TICK_RATE
         killed = deaths[(deaths["victim"] == hit["blinded"]) & (deaths["tick"] >= hit["tick"]) & (deaths["tick"] <= blind_until)] if len(deaths) else deaths
-        caught = int(enemies.get(hit["tick"], 0))
+        same_flash = enemies[enemies["tick"] == hit["tick"]]
+        caught = len(same_flash)
         verdict = FLASH_COST_TEAMMATE if len(killed) else FLASH_TRADE_OFF if caught else FLASH_WASTED
         rows.append({
             "round": hit["round"], "tick": hit["tick"], "blinded": hit["blinded"], "seconds": hit["seconds"],
             "enemies_caught": caught, "died_blind": bool(len(killed)),
             "death_cost": float(killed["cost"].iloc[0]) if len(killed) and "cost" in killed else 0.0,
-            "verdict": verdict, **{c: hit.get(c) for c in columns[-4:]},
+            "verdict": verdict,
+            "enemy_spots": [tuple(spot) for spot in same_flash.reindex(columns=["blinded_x", "blinded_y"]).dropna().to_numpy().tolist()],
+            **{c: hit.get(c) for c in columns[-4:]},
         })
     return pd.DataFrame(rows, columns=columns)
