@@ -1156,6 +1156,7 @@ def render_clutches(report: Report) -> None:
                 st.markdown("\n".join(f"- {reason}" for reason in clutch_reasons(c)))
                 if c["verdict"] in CLUTCH_FIXES:
                     st.markdown(f"**Next time:** {CLUTCH_FIXES[c['verdict']]}")
+                render_replay(clutch_replay(c))
                 sure = clutch_confidence(c)
                 if sure:
                     st.caption(describe(*sure))
