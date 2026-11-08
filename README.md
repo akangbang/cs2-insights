@@ -58,6 +58,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
+- **Replay the decision.** Wrong buy calls show what each option was worth, as a chart with one bar per choice and the one you made in blue.
 - **Disagree button.** Verdict cards let a player flag a call that looks wrong and say why (a wall or smoke, it was the right play, the facts look wrong). Answers feed `analytics.v_verdict_feedback`, which shows the operator which verdicts get rejected most.
 - **How accurate is it?** A page that tests the models in the open: for each match they're fitted on the others and predict the one they haven't seen, with charts of predicted against actual and notes on what the test doesn't prove.
 - **"How sure are we?" labels.** Avoidable deaths, clutches, buy calls, coverage grades and habits each carry a high, medium or low label with a one-line reason, so a tip from thin evidence doesn't look as solid as one with plenty behind it. These are rules of thumb, not statistical guarantees.

@@ -28,6 +28,7 @@ from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, completeness_warning,
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
 from cs2_insights.recap import build_recap
+from cs2_insights.replay import ROUNDS, WIN, Replay, call_replay, clutch_replay, death_replay
 from cs2_insights.utility import FLASH_COST_TEAMMATE, FLASH_FIXES, FLASH_TRADE_OFF, FLASH_WASTED, UNUSED_WORTH_MENTION
 from cs2_insights.report import (
     CLUTCH_FIXES,
@@ -750,6 +751,38 @@ def cover_card(row: pd.Series, report: Report) -> None:
         disagree_button(report, "coverage", row["verdict"], row["round"], row["tick"])
 
 
+def replay_chart(replay: Replay, mode: str) -> alt.Chart:
+    """One bar per option a player had; the option they took is blue."""
+    palette = COLORS[mode]
+    rows = pd.DataFrame([{
+        "option": f"{o.label} (what you did)" if o.taken and replay.unit == ROUNDS else o.label,
+        "value": o.value,
+        "group": "did" if o.taken else "best" if o.best_case else "other",
+        "text": f"{o.value:.0%}" if replay.unit == WIN else f"{o.value:.2f}",
+    } for o in replay.options])
+    top = 1.0 if replay.unit == WIN else max(float(rows["value"].max()) * 1.2, 0.5)
+    y = alt.Y("option:N", title=None, sort=rows["option"].tolist(), axis=alt.Axis(labelLimit=320, labelFontSize=12, ticks=False, domain=False))
+    x = alt.X("value:Q", title=replay.axis, scale=alt.Scale(domain=[0, top]), axis=alt.Axis(format=".0%" if replay.unit == WIN else ".1f", tickCount=5))
+    bars = alt.Chart(rows).mark_bar(cornerRadiusEnd=4).encode(
+        y=y, x=x,
+        color=alt.Color("group:N", legend=None, scale=alt.Scale(domain=["did", "other", "best"], range=[palette["Your team"], palette["neutral"], palette["neutral"]])),
+        opacity=alt.Opacity("group:N", legend=None, scale=alt.Scale(domain=["did", "other", "best"], range=[1, 1, 0.5])),
+        tooltip=[alt.Tooltip("option:N", title="Option"), alt.Tooltip("text:N", title="Worth")],
+    ).properties(height=alt.Step(30))
+    labels = alt.Chart(rows).mark_text(align="left", dx=5, fontSize=12, color=palette["text"]).encode(y=y, x=x, text="text:N").properties(height=alt.Step(30))
+    return alt.layer(bars, labels)
+
+
+def render_replay(replay: Replay | None) -> None:
+    """A decision replayed: what each option was worth, and what that says."""
+    if replay is None:
+        return
+    st.markdown(f"**🔁 Replay: {replay.question}**")
+    st.altair_chart(replay_chart(replay, theme_mode()), width="stretch")
+    st.markdown(replay.takeaway)
+    st.caption(f"{replay.note} These are estimates from Halftime's models, not a prediction of what would have happened.")
+
+
 def render_buy_calls(report: Report) -> None:
     calls = report.calls
     if calls.empty:
@@ -763,6 +796,7 @@ def render_buy_calls(report: Report) -> None:
     for _, call in wrong.iterrows():
         with st.container(border=True):
             st.markdown(f"⚠️ **Round {call['round']}** — {call['grade']}  \n{call_detail(call)}")
+            render_replay(call_replay(call))
             st.caption(describe(*call_confidence(call)))
             disagree_button(report, "buy_call", call["grade"], call["round"], call["round"])
     right = calls[calls["grade"] == GOOD_CALL]
