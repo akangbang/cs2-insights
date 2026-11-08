@@ -127,4 +127,5 @@ def test_parse_local_demo_utility():
     assert utility["flashes"].sum() > 0 and utility["smokes"].sum() > 0
     assert (blinds["seconds"] >= 1).all() and (blinds["thrower"] != blinds["blinded"]).all()
     assert utility["teammates_blinded"].sum() == blinds["teammate"].sum()
+    assert blinds[["thrower_x", "thrower_y", "blinded_x", "blinded_y"]].notna().all().all()
     assert (parsed.deaths["unused_utility"] >= 0).all()

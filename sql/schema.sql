@@ -188,6 +188,12 @@ CREATE TABLE IF NOT EXISTS verdict_feedback (
     UNIQUE (user_id, match_id, tick, steamid, kind)
 );
 
+-- Added with parser version 4: where each player stood when the flash went off.
+ALTER TABLE blinds ADD COLUMN IF NOT EXISTS thrower_x real;
+ALTER TABLE blinds ADD COLUMN IF NOT EXISTS thrower_y real;
+ALTER TABLE blinds ADD COLUMN IF NOT EXISTS blinded_x real;
+ALTER TABLE blinds ADD COLUMN IF NOT EXISTS blinded_y real;
+
 -- App settings that should survive restarts, e.g. which player "me" is.
 CREATE TABLE IF NOT EXISTS settings (
     key    text PRIMARY KEY,

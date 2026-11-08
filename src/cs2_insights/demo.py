@@ -26,7 +26,7 @@ VALVE_DEMO_NAME = re.compile(r"match730_(\d+)_")
 # Regulation is 24 rounds (MR12); after that, overtime halves start with set money, not pistols.
 REGULATION_ROUNDS = 24
 # Bump when parse_demo extracts something new, so stored matches get re-parsed.
-PARSER_VERSION = 3
+PARSER_VERSION = 4
 
 # Fights: every death, and where each living teammate stood and aimed at that moment.
 TICK_RATE = 64
@@ -302,7 +302,24 @@ def parse_utility(parser: DemoParser, rounds: pd.DataFrame, player_rounds: pd.Da
     utility = player_rounds[["round", "steamid"]].copy()
     for column in UTILITY_COLUMNS:
         utility[column] = [counts.get((int(r), s), {}).get(column, 0.0) for r, s in zip(utility["round"], utility["steamid"])]
-    return utility, pd.DataFrame(blinds, columns=["round", "tick", "thrower", "blinded", "seconds", "teammate"])
+    blinds = pd.DataFrame(blinds, columns=["round", "tick", "thrower", "blinded", "seconds", "teammate"])
+    return utility, _with_blind_positions(parser, blinds)
+
+
+def _with_blind_positions(parser: DemoParser, blinds: pd.DataFrame) -> pd.DataFrame:
+    """Add where the thrower and the blinded player stood when the flash went off."""
+    columns = ["thrower_x", "thrower_y", "blinded_x", "blinded_y"]
+    if blinds.empty:
+        return blinds.assign(**{c: pd.Series(dtype=float) for c in columns})
+    positions = parser.parse_ticks(["X", "Y"], ticks=sorted({int(t) for t in blinds["tick"]}))
+    positions["steamid"] = positions["steamid"].map(_steamid)
+    at = {(int(p.tick), p.steamid): (p.X, p.Y) for p in positions.itertuples()}
+    out = blinds.copy()
+    for role in ("thrower", "blinded"):
+        spots = [at.get((int(t), s), (None, None)) for t, s in zip(out["tick"], out[role])]
+        out[f"{role}_x"] = [x for x, _ in spots]
+        out[f"{role}_y"] = [y for _, y in spots]
+    return out
 
 
 def parse_demo(path: str | Path, match_id: str | None = None, source: str | None = None) -> ParsedDemo:

@@ -32,7 +32,7 @@ UTILITY_COLUMNS = [
     "match_id", "round", "steamid", "flashes", "smokes", "hes", "molotovs", "enemies_blinded", "enemy_blind_seconds",
     "teammates_blinded", "utility_damage",
 ]
-BLIND_COLUMNS = ["match_id", "round", "tick", "thrower", "blinded", "seconds", "teammate"]
+BLIND_COLUMNS = ["match_id", "round", "tick", "thrower", "blinded", "seconds", "teammate", "thrower_x", "thrower_y", "blinded_x", "blinded_y"]
 TRADE_CHANCE_COLUMNS = [
     "match_id", "round", "tick", "victim", "mate", "distance_to_killer", "distance_to_victim", "aim_angle",
     "mate_x", "mate_y", "mate_yaw",
@@ -96,7 +96,7 @@ def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
         if len(parsed.utility):
             _insert(cur, "player_utility", parsed.utility.drop_duplicates(["round", "steamid"]), UTILITY_COLUMNS)
         if len(parsed.blinds):
-            _insert(cur, "blinds", parsed.blinds.drop_duplicates(["tick", "thrower", "blinded"]), BLIND_COLUMNS)
+            _insert(cur, "blinds", parsed.blinds.drop_duplicates(["tick", "thrower", "blinded"]).reindex(columns=BLIND_COLUMNS), BLIND_COLUMNS)
 
 
 def pool_team_rounds(conn: psycopg.Connection, exclude_match_id: str | None = None) -> pd.DataFrame:
