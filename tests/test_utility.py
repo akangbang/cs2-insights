@@ -1,6 +1,6 @@
 import pandas as pd
 
-from cs2_insights.utility import team_flashes, utility_summary
+from cs2_insights.utility import FLASH_COST_TEAMMATE, FLASH_TRADE_OFF, FLASH_WASTED, review_team_flashes, team_flashes, utility_summary
 
 
 def _utility(rows):
@@ -29,3 +29,27 @@ def test_team_flashes_are_only_your_flashes_on_teammates():
                            "blinded": ["mate", "enemy", "me"], "seconds": [2.0, 3.0, 1.5], "teammate": [True, False, True]})
     flashes = team_flashes(blinds, "me")
     assert flashes["blinded"].tolist() == ["mate"]
+
+
+def _blind(tick, blinded, teammate, seconds=2.0):
+    return {"round": 1, "tick": tick, "thrower": "me", "blinded": blinded, "seconds": seconds, "teammate": teammate,
+            "thrower_x": 0.0, "thrower_y": 0.0, "blinded_x": 10.0, "blinded_y": 10.0}
+
+
+def test_team_flash_verdicts():
+    blinds = pd.DataFrame([
+        _blind(100, "mate1", True),                     # teammate dies while blind
+        _blind(500, "mate2", True), _blind(500, "enemy", False),  # also caught an enemy
+        _blind(900, "mate3", True),                     # only the teammate
+    ])
+    # mate1 dies 1 s after the flash (64 ticks), inside the 2 s blind; mate3 dies long after theirs.
+    deaths = pd.DataFrame({"victim": ["mate1", "mate3"], "tick": [164, 2_000], "cost": [0.19, 0.2]})
+    review = review_team_flashes(blinds, deaths, "me").set_index("blinded")
+    assert review.at["mate1", "verdict"] == FLASH_COST_TEAMMATE and review.at["mate1", "death_cost"] == 0.19
+    assert review.at["mate2", "verdict"] == FLASH_TRADE_OFF and review.at["mate2", "enemies_caught"] == 1
+    assert review.at["mate3", "verdict"] == FLASH_WASTED and not review.at["mate3", "died_blind"]
+
+
+def test_no_team_flashes_gives_an_empty_review():
+    blinds = pd.DataFrame([_blind(100, "enemy", False)])
+    assert review_team_flashes(blinds, pd.DataFrame(columns=["victim", "tick", "cost"]), "me").empty
