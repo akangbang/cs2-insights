@@ -108,3 +108,8 @@ Revisit if: The player decides lost-cause deaths should only count as avoidable 
 Context: halftime.gg costs about $50,000. The user wanted a learning-flavoured name containing "lean" and chose getleanpeek.com. leanpeek.com is taken; leanpeek.gg and getleanpeek.com were unregistered on 2026-11-09. Web searches found no product or trademark called LeanPeek. The closest record is LEANPEAK (serial 99633070), a pending application for vitamin supplements by Cowboy Nutrition LLC, per third-party trademark sites. Leanify was rejected: registered US software trademark (6824693), and very close to the competitor Leetify.
 Choice + why: LeanPeek in everything users see. HALFTIME_ environment settings stay, because users never see them and renaming them would break existing setups and the stored-key configuration.
 Revisit if: A USPTO search or a lawyer finds a conflict. Web searches are not trademark clearance.
+
+## 2026-11-09 — Brand is Getleanpeek
+Context: After the rename to LeanPeek, the user asked for the brand to match the chosen domain, getleanpeek.com.
+Choice + why: Getleanpeek, with that exact capitalisation, in everything users see. The trademark notes in the LeanPeek entry above still apply.
+Revisit if: A USPTO search or a lawyer finds a conflict.
