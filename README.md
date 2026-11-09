@@ -41,6 +41,10 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Habits page with a weekly focus](docs/screenshots/habits.png)
 
+**Duo report.** Pick a regular teammate and see who covers whom, how far apart you play, and what your flashes do to each other.
+
+![Duo report](docs/screenshots/duo.png)
+
 **How accurate is it?** The models tested on matches they haven't seen. Dots on the dashed line mean the odds are honest.
 
 ![Accuracy page](docs/screenshots/accuracy.png)
@@ -60,6 +64,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Economy:** both teams' equipment and buys, round by round.
 - **Replay the decision.** Avoidable deaths, wrong buy calls and fight-or-save clutches show what each option was worth, as a chart with one bar per choice and the one you made in blue. For a death, it compares what happened with the same death with a teammate close enough to trade (at the rate those get traded across the pool) and with staying alive, labelled a best case because a demo can't show you'd have survived. When a lost-cause death's numbers favour fighting on, the replay says so and the "hide next time" advice is dropped.
 - **Disagree button.** Verdict cards let a player flag a call that looks wrong and say why (a wall or smoke, it was the right play, the facts look wrong). Answers feed `analytics.v_verdict_feedback`, which shows the operator which verdicts get rejected most.
+- **Duo report.** For any teammate you've shared matches with: round win rate together against without them, trades each way against what players in those spots usually get, how far apart you play, flashes on each other, and kills set up by a flash. It ends with what to work on together and what to keep doing. Follows the match-type filter.
 - **How accurate is it?** A page that tests the models in the open: for each match they're fitted on the others and predict the one they haven't seen, with charts of predicted against actual and notes on what the test doesn't prove.
 - **"How sure are we?" labels.** Avoidable deaths, clutches, buy calls, coverage grades and habits each carry a high, medium or low label with a one-line reason, so a tip from thin evidence doesn't look as solid as one with plenty behind it. These are rules of thumb, not statistical guarantees.
 - **Match types.** Premier, Competitive and FACEIT are detected from each demo and kept apart: every report is labelled, the replay list can be filtered, and Your habits can be viewed for one type at a time (the recap, focus chart and habits all follow). FACEIT detection reads the server name and hasn't been tested on a real FACEIT demo yet.
@@ -97,7 +102,7 @@ Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `
 | `fact_player_match` | player per match: deaths, avoidable deaths, coverage, utility, clutches, opening duels, buy calls |
 | `fact_death`, `fact_clutch`, `fact_opening`, `fact_buy_call` | death; clutch; opening duel; force-or-save decision |
 
-**Business metrics.** The app records product usage in `app_events` (report viewed, demo uploaded, replays added, habits viewed, round opened, "This is me" saved, focus set, checklist saved, progress card saved; no names, IPs or device details; disclosed in the privacy policy). Views on top: `v_usage_daily`, `v_funnel` (opened app → viewed a report → opened habits → saved themselves), `v_feature_use` and `v_retention_weekly`. Turn tracking off with `HALFTIME_NO_TRACKING=1`.
+**Business metrics.** The app records product usage in `app_events` (report viewed, demo uploaded, replays added, habits viewed, round opened, "This is me" saved, focus set, checklist saved, progress card saved, duo report viewed; no names, IPs or device details; disclosed in the privacy policy). Views on top: `v_usage_daily`, `v_funnel` (opened app → viewed a report → opened habits → saved themselves), `v_feature_use` and `v_retention_weekly`. Turn tracking off with `HALFTIME_NO_TRACKING=1`.
 
 **Who can see this.** Dashboards are for the operator, never users: no app page reads these tables, and Power BI should log in through the `analytics_reader` role, which can read the `analytics` schema and nothing else (no raw events, no Steam auth codes). When hosted, the tables are rebuilt with the analytics command rather than during a user's request, and usage is counted per account using a scrambled ID.
 
@@ -149,6 +154,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/fights.py` | Death verdicts, trade chance, coverage grade, clutches and opening duels |
 | `src/cs2_insights/recap.py` | Your latest matches against the ones before |
 | `src/cs2_insights/categories.py` | Premier, Competitive and FACEIT match categories |
+| `src/cs2_insights/duo.py` | How two teammates back each other up |
 | `src/cs2_insights/proof.py` | Whether a focus habit changed since it was picked, and the shareable card |
 | `src/cs2_insights/replay.py` | What each option in a decision was worth |
 | `src/cs2_insights/utility.py` | Grenade and flash summary per match, and the team flash review |

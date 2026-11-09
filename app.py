@@ -22,6 +22,7 @@ from cs2_insights.demo import ParsedDemo, match_id_from_path, parse_demo
 from cs2_insights import fights
 from cs2_insights.confidence import call_confidence, clutch_confidence, death_confidence, describe, grade_confidence, habit_confidence
 from cs2_insights.demo import TICK_RATE
+from cs2_insights.duo import Duo, Support, build_duo, partners
 from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
 from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
@@ -1699,6 +1700,118 @@ def render_focus(past: pd.DataFrame, steamid: str, mode: str, newest: str) -> No
     render_proof(past, choice, steamid, newest)
 
 
+DUO_PARTS = ["Traded", "In range, no trade", "Too far"]
+MIN_SOLO_ROUNDS = 20  # rounds without the partner needed before comparing win rates
+
+
+def duo_chart(duo: Duo, mode: str) -> alt.Chart:
+    """For each of the two: every time the other died with them alive, split by what happened."""
+    palette = COLORS[mode]
+    rows = []
+    for who, support in (("You covering them", duo.you), ("Them covering you", duo.them)):
+        reached = max(support.in_range, support.traded)
+        for part, count in zip(DUO_PARTS, (support.traded, reached - support.traded, max(support.alive - reached, 0))):
+            rows.append({"who": who, "part": part, "count": count, "stack": DUO_PARTS.index(part)})
+    bars = alt.Chart(pd.DataFrame(rows)).mark_bar(stroke=palette["surface"], strokeWidth=2).encode(
+        y=alt.Y("who:N", title=None, sort=["You covering them", "Them covering you"], axis=alt.Axis(labelLimit=220)),
+        x=alt.X("count:Q", title="Times the other player died with this one alive", stack="zero", axis=alt.Axis(tickMinStep=1)),
+        color=alt.Color("part:N", title=None, sort=DUO_PARTS, scale=alt.Scale(domain=DUO_PARTS, range=[palette["good"], palette["serious"], palette["neutral"]]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        order="stack:Q",
+        tooltip=[alt.Tooltip("who:N", title="Who"), alt.Tooltip("part:N", title="What happened"), alt.Tooltip("count:Q", title="Times")],
+    )
+    return alt.layer(bars.properties(height=alt.Step(40)))
+
+
+def duo_flash_card(column, title: str, support: Support) -> None:
+    with column.container(border=True):
+        st.markdown(f"**{title}**")
+        st.markdown(f"- Blinded their partner **{support.flashed_them}** times\n- **{support.died_blind}** of those ended in a death while blind\n"
+                    f"- **{support.kills_set_up}** enemies blinded and then killed by the partner")
+
+
+def render_duo(duo: Duo, name: str, mode: str) -> None:
+    if duo.matches < 2:
+        st.warning("You've only played one match together, so treat all of this as a first look.")
+    cards = st.columns(4)
+    with cards[0].container(border=True):
+        delta = None
+        if duo.solo_win_rate is not None and duo.solo_rounds >= MIN_SOLO_ROUNDS:
+            delta = f"{(duo.win_rate - duo.solo_win_rate) * 100:+.0f} pts vs without them"
+        st.metric("Rounds won together", f"{duo.win_rate:.0%}", delta)
+        st.caption(f"{duo.rounds} rounds in {duo.matches} match{'es' if duo.matches != 1 else ''}.")
+    with cards[1].container(border=True):
+        st.metric("You traded them", f"{duo.you.traded} of {duo.you.in_range}", help=f"When {name} died and you were within {fights.TRADE_RANGE} units of the killer.")
+        st.caption(f"Players in those spots get about {duo.you.expected:.1f}.")
+    with cards[2].container(border=True):
+        st.metric("They traded you", f"{duo.them.traded} of {duo.them.in_range}", help=f"When you died and {name} was within {fights.TRADE_RANGE} units of the killer.")
+        st.caption(f"Players in those spots get about {duo.them.expected:.1f}.")
+    with cards[3].container(border=True):
+        st.metric("Typical distance apart", f"{duo.median_distance:,.0f}" if duo.median_distance is not None else "–", help="In game units, when one of you dies.")
+        st.caption(f"When one of you dies. Close enough to trade is under {spacing.CLOSE_ENOUGH}." if duo.close_share is None else
+                   f"Units. Within {spacing.CLOSE_ENOUGH} {duo.close_share:.0%} of the time one of you dies.")
+    st.markdown("#### Who covers whom")
+    st.altair_chart(duo_chart(duo, mode), width="stretch")
+    st.caption(f"Each bar counts the times one of you died with the other alive. Green is a trade within {fights.TRADE_SECONDS} seconds; "
+               f"\"In range\" means within {fights.TRADE_RANGE} units of the killer.")
+    st.markdown("#### Flashes between you")
+    left, right = st.columns(2)
+    duo_flash_card(left, "Your flashes", duo.you)
+    duo_flash_card(right, f"{name}'s flashes", duo.them)
+    fixes, keeps = [n for n in duo.notes if n.kind == "fix"], [n for n in duo.notes if n.kind == "keep"]
+    st.subheader("Work on this together")
+    if not fixes:
+        st.write("Nothing stood out to fix.")
+    for note in fixes:
+        with st.container(border=True):
+            st.markdown(f"⚠️ **{note.title}**  \n{note.detail}")
+    if keeps:
+        st.subheader("Keep doing this")
+        for note in keeps:
+            with st.container(border=True):
+                st.markdown(f"✅ **{note.title}**  \n{note.detail}")
+    st.caption("A higher win rate together doesn't prove either of you caused it: opponents and the rest of the team change too. "
+               "Only rounds you played on the same team count.")
+
+
+def duo_page() -> None:
+    st.title("Duo report")
+    st.write("How you and a regular teammate back each other up: trades, spacing and flashes across the matches you've shared.")
+    conn = database()
+    if conn is None:
+        st.warning("The Duo report needs the match database. Start it with `docker compose up -d`, then refresh.")
+        return
+    try:
+        matches = [hide_names(m) for m in db.load_matches(conn, user_id=current_user() if HOSTED else None)]
+        pool_deaths, pool_chances, pool_rounds = db.pool_fights(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    matches = [m for m in matches if len(m.deaths)]
+    if not matches:
+        st.info("No matches stored yet. Open a report on the Match report page first.")
+        return
+    counts = pd.concat([m.player_rounds.drop_duplicates("steamid")[["steamid", "name"]] for m in matches])
+    counts = counts.groupby("steamid").agg(name=("name", "last"), matches=("name", "size")).sort_values("matches", ascending=False)
+    remembered = st.session_state.get("steamid") or saved_setting("me")
+    players = counts.index.tolist()
+    me = st.sidebar.selectbox("Which player are you?", players, index=players.index(remembered) if remembered in players else 0,
+                              format_func=lambda s: f"{counts.at[s, 'name']}  ({counts.at[s, 'matches']} matches)", key="duo_me")
+    st.session_state["steamid"] = me
+    played = category_picker([m for m in matches if me in set(m.player_rounds["steamid"])], "duo_category")
+    table = partners(played, me)
+    if table.empty:
+        st.info("No teammates found in these matches.")
+        return
+    mates = table.set_index("steamid")
+    mate = st.selectbox("Who do you play with?", mates.index.tolist(),
+                        format_func=lambda s: f"{mates.at[s, 'name']}  ({mates.at[s, 'matches']} match{'es' if mates.at[s, 'matches'] != 1 else ''} together)", key="duo_mate")
+    track("duo_viewed", steamid=me, once=True)
+    name = str(mates.at[mate, "name"])
+    render_duo(build_duo(played, me, mate, name, fit_fight_model(pool_deaths, pool_chances, pool_rounds)), name, theme_mode())
+
+
 def render_habit_openings(matches: list, steamid: str, mode: str) -> None:
     """Where you take the first fight of a round, per map, and how often you win it."""
     duels = [opening_duels(m.deaths, m.team_rounds, steamid).assign(map=map_label(m.match.iloc[0]["map"]))
@@ -1927,6 +2040,7 @@ navigation = st.navigation(
     [
         st.Page(report_page, title="Match report", icon="📊", default=True),
         st.Page(habits_page, title="Your habits", icon="🎯", url_path="habits"),
+        st.Page(duo_page, title="Duo report", icon="👥", url_path="duo"),
         st.Page(accuracy_page, title="How accurate is it?", icon="🔬", url_path="accuracy"),
         st.Page(data_page, title="Your data", icon="🗑️", url_path="data"),
         st.Page(markdown_page("privacy.md"), title="Privacy", icon="🔒", url_path="privacy"),
