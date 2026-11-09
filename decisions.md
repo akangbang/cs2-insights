@@ -113,3 +113,8 @@ Revisit if: A USPTO search or a lawyer finds a conflict. Web searches are not tr
 Context: After the rename to LeanPeek, the user asked for the brand to match the chosen domain, getleanpeek.com.
 Choice + why: Getleanpeek, with that exact capitalisation, in everything users see. The trademark notes in the LeanPeek entry above still apply.
 Revisit if: A USPTO search or a lawyer finds a conflict.
+
+## 2026-11-09 — Habit proof counts from a match ID, not a date
+Context: Habit proof needs "since you picked this focus", but demos don't say when they were played.
+Choice + why: When a focus is picked, the newest stored Valve match ID is saved as `focus_since`, and matches with a higher ID count as after. Nothing is claimed before 3 such matches, and a change must beat the player's normal swing, using the recap's test. On the first 6 matches, 1 of 24 trial comparisons counted as an improvement, so the card stays rare. The card carries no player name.
+Revisit if: Match dates become available. A replay played before the focus but downloaded after it currently counts as after.
