@@ -48,7 +48,7 @@ The app runs on Streamlit Community Cloud, operated by Snowflake. Match data is 
 - **Delete your data yourself** on the **Your data** page:
   - *Forget my player* replaces your Steam ID in every stored match with a random ID and removes your name. The match numbers themselves stay, anonymous, because the other nine players' reports depend on them; nothing links them back to you. It also removes a linked Steam match history.
   - *Delete my account data* removes your settings, your usage history, your disagreements and any match only you added.
-- **Ask us instead:** email [contact email] with your Steam ID, for example if you never used Getleanpeek but appear in someone else's match.
+- **Ask us instead:** email andrewwkangg@gmail.com with your Steam ID, for example if you never used Getleanpeek but appear in someone else's match.
 - **Unlink match history:** ask us, or change your match history authentication code in Steam, which stops any further access.
 
 ## Services we use
@@ -57,4 +57,4 @@ When you sign in with Google, Getleanpeek receives your email address and turns 
 
 ## Contact
 
-[contact email]
+andrewwkangg@gmail.com
