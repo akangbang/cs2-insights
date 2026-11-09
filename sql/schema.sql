@@ -194,6 +194,9 @@ ALTER TABLE blinds ADD COLUMN IF NOT EXISTS thrower_y real;
 ALTER TABLE blinds ADD COLUMN IF NOT EXISTS blinded_x real;
 ALTER TABLE blinds ADD COLUMN IF NOT EXISTS blinded_y real;
 
+-- Added with parser version 5: premier, competitive, faceit or other.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS match_type text;
+
 -- App settings that should survive restarts, e.g. which player "me" is.
 CREATE TABLE IF NOT EXISTS settings (
     key    text PRIMARY KEY,

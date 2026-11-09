@@ -26,7 +26,11 @@ VALVE_DEMO_NAME = re.compile(r"match730_(\d+)_")
 # Regulation is 24 rounds (MR12); after that, overtime halves start with set money, not pistols.
 REGULATION_ROUNDS = 24
 # Bump when parse_demo extracts something new, so stored matches get re-parsed.
-PARSER_VERSION = 4
+PARSER_VERSION = 5
+
+# What kind of match a demo is. Valve's comp_rank_type: 11 Premier, 12 Competitive (checked on 12 real demos).
+PREMIER, COMPETITIVE, FACEIT, OTHER = "premier", "competitive", "faceit", "other"
+RANK_TYPES = {11: PREMIER, 12: COMPETITIVE}
 
 # Fights: every death, and where each living teammate stood and aimed at that moment.
 TICK_RATE = 64
@@ -61,6 +65,22 @@ class ParsedDemo:
     trade_chances: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per death per living teammate
     utility: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per player per round: grenades and flashes
     blinds: pd.DataFrame = field(default_factory=pd.DataFrame)  # one row per flash that blinded someone for 1 s+
+
+
+def classify_match(server: str | None, rank_types: pd.Series) -> str:
+    """Premier, Competitive, FACEIT or Other, from the server name and the players' rank type."""
+    if "faceit" in (server or "").lower():
+        return FACEIT
+    known = pd.to_numeric(rank_types, errors="coerce").dropna()
+    return RANK_TYPES.get(int(known.mode().iat[0]), OTHER) if len(known) else OTHER
+
+
+def _rank_types(parser: DemoParser, tick: int) -> pd.Series:
+    """Each player's rank type at one tick; non-Valve servers may not have the field at all."""
+    try:
+        return parser.parse_ticks(["comp_rank_type"], ticks=[int(tick)])["comp_rank_type"]
+    except Exception:
+        return pd.Series(dtype=float)
 
 
 def match_id_from_path(path: Path) -> str:
@@ -403,6 +423,7 @@ def parse_demo(path: str | Path, match_id: str | None = None, source: str | None
                 "source": source or ("valve" if VALVE_DEMO_NAME.match(path.name) else "upload"),
                 "map": header.get("map_name"),
                 "server": header.get("server_name"),
+                "match_type": classify_match(header.get("server_name"), _rank_types(parser, rounds["freeze_end_tick"].iloc[-1])),
                 "patch_version": header.get("patch_version"),
                 "rounds": len(rounds),
                 "team_a_score": int(final.get("A", 0)),

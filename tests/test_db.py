@@ -164,3 +164,12 @@ def test_disagreeing_twice_keeps_one_row_with_the_latest_reason(clean_conn):
     assert view[0] >= 1
     clean_conn.execute("DELETE FROM verdict_feedback WHERE user_id = 'pytest_user'")
     clean_conn.commit()
+
+
+def test_match_type_round_trip(clean_conn):
+    parsed = _fake_demo()
+    parsed.match = parsed.match.assign(match_type="premier")
+    db.load_parsed(clean_conn, parsed)
+    assert db.match_types(clean_conn)[parsed.match.iloc[0]["match_id"]] == "premier"
+    stored = next(m for m in db.load_matches(clean_conn) if m.match.iloc[0]["match_id"] == MATCH_ID)
+    assert stored.match.iloc[0]["match_type"] == "premier"

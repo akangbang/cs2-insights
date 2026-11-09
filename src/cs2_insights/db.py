@@ -12,7 +12,7 @@ from cs2_insights.demo import PARSER_VERSION, ParsedDemo
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
 
 MATCH_COLUMNS = [
-    "match_id", "source", "map", "server", "patch_version", "rounds", "team_a_score", "team_b_score", "demo_file", "parser_version",
+    "match_id", "source", "map", "server", "patch_version", "rounds", "team_a_score", "team_b_score", "demo_file", "parser_version", "match_type",
 ]
 ROUND_COLUMNS = ["match_id", "round", "freeze_end_tick", "end_tick", "winner_side", "reason"]
 TEAM_ROUND_COLUMNS = [
@@ -85,6 +85,7 @@ def load_parsed(conn: psycopg.Connection, parsed: ParsedDemo) -> None:
             _rows(names, ["steamid", "name"]),
         )
         match = parsed.match if "parser_version" in parsed.match else parsed.match.assign(parser_version=1)
+        match = match.reindex(columns=MATCH_COLUMNS)
         _insert(cur, "matches", match, MATCH_COLUMNS)
         _insert(cur, "rounds", parsed.rounds, ROUND_COLUMNS)
         _insert(cur, "team_rounds", parsed.team_rounds, TEAM_ROUND_COLUMNS)
@@ -138,7 +139,7 @@ def load_matches(conn: psycopg.Connection, steamid: str | None = None, user_id: 
         filters.append("match_id IN (SELECT match_id FROM user_matches WHERE user_id = %s)")
         values.append(user_id)
     where, params = ("WHERE " + " AND ".join(filters), tuple(values)) if filters else ("", ())
-    match_cols = ["match_id", "source", "map", "rounds", "team_a_score", "team_b_score", "demo_file"]
+    match_cols = ["match_id", "source", "map", "rounds", "team_a_score", "team_b_score", "demo_file", "match_type"]
     matches = pd.DataFrame(
         conn.execute(f"SELECT {', '.join(match_cols)} FROM matches {where} ORDER BY match_id", params).fetchall(),
         columns=match_cols,
@@ -182,6 +183,13 @@ def load_matches(conn: psycopg.Connection, steamid: str | None = None, user_id: 
         )
         for match_id in matches["match_id"]
     ]
+
+
+def match_types(conn: psycopg.Connection) -> dict[str, str | None]:
+    """Each stored match's category, without loading the matches."""
+    rows = conn.execute("SELECT match_id, match_type FROM matches").fetchall()
+    conn.commit()
+    return dict(rows)
 
 
 def get_setting(conn: psycopg.Connection, key: str) -> str | None:
