@@ -37,7 +37,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Clutches tab](docs/screenshots/clutches.png)
 
-**Your habits and your focus.** A recap of your last few matches against the ones before, the habits that cost the most rounds, a short checklist for your next match, and one habit you've chosen to work on, tracked match by match.
+**Your habits and your focus.** A recap of your last few matches against the ones before, the habits that cost the most rounds, a short checklist for your next match, and one habit you've chosen to work on, tracked match by match, with a card to share when it really improves.
 
 ![Habits page with a weekly focus](docs/screenshots/habits.png)
 
@@ -66,6 +66,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Recap:** your last matches (up to 5) against the same number before them: win rate, avoidable deaths, what improved most, what slipped most, and one click to make the slip your focus. It compares matches rather than calendar weeks because a demo doesn't say when it was played; a change only counts when it's bigger than your normal match-to-match swing.
   - **Before your next match:** your top habits as a short checklist of actions, with your focus, that you can tick off or save as a text file for a second screen.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, dying far from teammates, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
+  - **Habit proof:** once you've played 3 matches since picking a focus, it compares them with up to 5 from before and says whether the habit improved, slipped or stayed within your normal swing. A real improvement gets a shareable image with the numbers and no player name.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
 - **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.
@@ -95,7 +96,7 @@ Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `
 | `fact_player_match` | player per match: deaths, avoidable deaths, coverage, utility, clutches, opening duels, buy calls |
 | `fact_death`, `fact_clutch`, `fact_opening`, `fact_buy_call` | death; clutch; opening duel; force-or-save decision |
 
-**Business metrics.** The app records product usage in `app_events` (report viewed, demo uploaded, replays added, habits viewed, round opened, "This is me" saved, focus set, checklist saved; no names, IPs or device details; disclosed in the privacy policy). Views on top: `v_usage_daily`, `v_funnel` (opened app → viewed a report → opened habits → saved themselves), `v_feature_use` and `v_retention_weekly`. Turn tracking off with `HALFTIME_NO_TRACKING=1`.
+**Business metrics.** The app records product usage in `app_events` (report viewed, demo uploaded, replays added, habits viewed, round opened, "This is me" saved, focus set, checklist saved, progress card saved; no names, IPs or device details; disclosed in the privacy policy). Views on top: `v_usage_daily`, `v_funnel` (opened app → viewed a report → opened habits → saved themselves), `v_feature_use` and `v_retention_weekly`. Turn tracking off with `HALFTIME_NO_TRACKING=1`.
 
 **Who can see this.** Dashboards are for the operator, never users: no app page reads these tables, and Power BI should log in through the `analytics_reader` role, which can read the `analytics` schema and nothing else (no raw events, no Steam auth codes). When hosted, the tables are rebuilt with the analytics command rather than during a user's request, and usage is counted per account using a scrambled ID.
 

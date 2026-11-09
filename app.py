@@ -27,6 +27,7 @@ from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
 from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, completeness_warning, explain_parse_error, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
+from cs2_insights.proof import IMPROVED, MIN_AFTER, NO_BASELINE, WAITING, WORSE, build_proof, change_words, latest_match, proof_card
 from cs2_insights.recap import build_recap
 from cs2_insights.replay import ROUNDS, WIN, Replay, call_replay, clutch_replay, death_replay
 from cs2_insights.utility import FLASH_COST_TEAMMATE, FLASH_FIXES, FLASH_TRADE_OFF, FLASH_WASTED, UNUSED_WORTH_MENTION
@@ -1551,6 +1552,46 @@ def render_checklist(habits) -> None:
                            help="Keep it open on a second screen while you play.", on_click=lambda: track("checklist_saved"))
 
 
+def start_focus(key: str, past: pd.DataFrame, steamid: str) -> None:
+    """Save a new focus and remember the newest match, so progress only counts matches after it."""
+    save_setting("focus", key)
+    save_setting("focus_since", latest_match(past) or "0")
+    track("focus_set", steamid=steamid, detail=key)
+
+
+def render_proof(past: pd.DataFrame, key: str, steamid: str) -> None:
+    """Has this habit actually changed since you chose it? If it has, a card to share."""
+    since = saved_setting("focus_since")
+    if since is None:  # a focus picked before the starting point was saved: count from now
+        since = latest_match(past)
+        if since is None or database() is None:
+            return
+        save_setting("focus_since", since)
+    proof = build_proof(past, key, since)
+    st.markdown("#### 🏅 Is it working?")
+    if proof.status == WAITING:
+        left = MIN_AFTER - proof.after_matches
+        st.write(f"Too early to say: {proof.after_matches} of the {MIN_AFTER} matches needed since you picked this habit. "
+                 f"Play and add {left} more.")
+    elif proof.status == NO_BASELINE:
+        st.write("There aren't enough earlier matches to compare with. Add older replays from the sidebar.")
+    else:
+        change = proof.change
+        moved = f"from **{change.value(change.earlier)}** to **{change.value()}** ({change_words(change)})"
+        if proof.status == IMPROVED:
+            st.markdown(f"✅ **It's working.** {proof.label} went {moved} since you picked it.")
+            card = proof_card(proof)
+            st.image(card, width=520)
+            st.download_button("Save this card", card, file_name="getleanpeek-progress.png", mime="image/png", key=f"proof_{key}",
+                               help="It shows the habit and the numbers, never your name.", on_click=lambda: track("proof_saved", steamid=steamid, detail=key))
+        elif proof.status == WORSE:
+            st.markdown(f"⚠️ **It's slipping.** {proof.label} went {moved} since you picked it.")
+        else:
+            st.markdown(f"➖ **No clear change yet.** {proof.label} went {moved}, which is within your normal match-to-match swing.")
+    st.caption("Counted from your newest stored match when you picked this habit. Compares up to 5 matches before with every match since; "
+               "uploaded demos are left out because Getleanpeek can't tell when they were played.")
+
+
 def render_recap(past: pd.DataFrame, steamid: str) -> None:
     """Your latest matches against the same number before them: what got better, what slipped, what to work on."""
     recap = build_recap(past)
@@ -1587,8 +1628,7 @@ def render_recap(past: pd.DataFrame, steamid: str) -> None:
         moved_tile(cols[3], "Slipped most", recap.slipped)
         if recap.slipped and recap.slipped.key != saved_setting("focus") and database() is not None:
             if st.button(f"🎯 Make \"{recap.slipped.label.lower()}\" my focus"):
-                save_setting("focus", recap.slipped.key)
-                track("focus_set", steamid=steamid, detail=recap.slipped.key)
+                start_focus(recap.slipped.key, past, steamid)
                 st.rerun()
         note = (f"Compares your last {recap.window} matches with the {recap.window} before them, not calendar weeks, because a demo doesn't "
                 "say when it was played. A change only counts when it's bigger than your normal match-to-match swing.")
@@ -1610,8 +1650,7 @@ def render_focus(past: pd.DataFrame, steamid: str, mode: str) -> None:
         st.caption("Working on one thing at a time is how habits change. Your choice shows on every match report.")
         return
     if choice != saved and database() is not None:
-        save_setting("focus", choice)
-        track("focus_set", steamid=steamid, detail=choice)
+        start_focus(choice, past, steamid)
     label, column, lower_is_better = FOCUS[choice]
     if past.empty or column not in past or past[column].dropna().empty:
         st.write("No data for this habit yet. Re-add your replays from the sidebar.")
@@ -1619,6 +1658,7 @@ def render_focus(past: pd.DataFrame, steamid: str, mode: str) -> None:
     st.altair_chart(focus_chart(past, column, mode), width="stretch")
     direction = "Lower" if lower_is_better else "Higher"
     st.caption(f"{label}, match by match, oldest on the left. {direction} is better; the dashed line is your average.")
+    render_proof(past, choice, steamid)
 
 
 def render_habit_openings(matches: list, steamid: str, mode: str) -> None:
