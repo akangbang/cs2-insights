@@ -1,6 +1,6 @@
 # Privacy policy
 
-*Draft, last updated November 3, 2026. Have a lawyer review before public launch.*
+*Draft, last updated November 9, 2026. Have a lawyer review before public launch.*
 
 Getleanpeek analyzes CS2 match demos to grade players' decisions. This page explains what we collect and what we do with it.
 
@@ -37,11 +37,11 @@ We don't sell your data, use it for advertising, or send you marketing you didn'
 
 ## Other players in your match
 
-A demo contains information about all 10 players. Getleanpeek only shows the economy data needed for your report. Any player who wants their data removed can ask us (see below), whether or not they uploaded anything.
+A demo contains information about all 10 players. Getleanpeek only shows the match data needed for your report. Any player who wants their data removed can ask us (see below), whether or not they uploaded anything.
 
 ## Where it's stored
 
-Data is stored in a PostgreSQL database [location to be confirmed: currently on the operator's own computer; this section will name the hosting country before public launch]. Steam data is only stored in the places listed here.
+The app runs on Streamlit Community Cloud, operated by Snowflake. Match data is stored in a PostgreSQL database hosted by Neon in [Neon region]. Steam data is only stored in the places listed here.
 
 ## Your choices
 
@@ -53,7 +53,7 @@ Data is stored in a PostgreSQL database [location to be confirmed: currently on 
 
 ## Services we use
 
-Getleanpeek uses the Steam Web API to look up profiles and match share codes when you ask it to. Getleanpeek is not affiliated with or endorsed by Valve Corporation.
+When you sign in with Google, Getleanpeek receives your email address and turns it into a scrambled ID; the address itself isn't stored in our database. Getleanpeek uses the Steam Web API to look up profiles and match share codes when you ask it to. Getleanpeek is not affiliated with or endorsed by Valve Corporation.
 
 ## Contact
 
