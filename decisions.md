@@ -118,3 +118,13 @@ Revisit if: A USPTO search or a lawyer finds a conflict.
 Context: Habit proof needs "since you picked this focus", but demos don't say when they were played.
 Choice + why: When a focus is picked, the newest stored Valve match ID is saved as `focus_since`, and matches with a higher ID count as after. Nothing is claimed before 3 such matches, and a change must beat the player's normal swing, using the recap's test. On the first 6 matches, 1 of 24 trial comparisons counted as an improvement, so the card stays rare. The card carries no player name.
 Revisit if: Match dates become available. A replay played before the focus but downloaded after it currently counts as after.
+
+## 2026-11-09 — Free hosting on Streamlit Community Cloud, for testing only
+Context: The user wants the app online for free. Hugging Face's docs say Docker Spaces need a paid subscription, Koyeb and Render free tiers have 512 MB, and Oracle's free server can be reclaimed when idle and needs server administration.
+Choice + why: Streamlit Community Cloud with Neon's free database (DEPLOY.md). It needs no server to run. Its terms (November 2025) limit apps handling personal data to personal, non-commercial use such as evaluation, so this is for a free test only.
+Revisit if: Charging money, marketing it as a business, or large demos crash the free memory limit. Next step is a Hetzner CX23.
+
+## 2026-11-09 — Match categories from the demo itself
+Context: The user wanted Premier, Competitive and FACEIT kept apart.
+Choice + why: comp_rank_type 11 is Premier and 12 is Competitive, checked on 12 real demos. FACEIT is recognised from the server name, which has not been tested on a real FACEIT demo. Win-chance models still pool every category, because splitting them would leave too little data.
+Revisit if: A real FACEIT demo isn't recognised, or the pool grows large enough to fit models per category.
