@@ -33,6 +33,10 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Utility tab](docs/screenshots/utility.png)
 
+**Second-half plan.** Three things to change, written only from the first half, then whether you did them.
+
+![Second-half plan](docs/screenshots/second-half.png)
+
 **Clutches.** Every round you were last alive: was fighting or saving right, given your chance to win, the bomb timer and what your gear was worth over the next few rounds? A replay chart shows what each option was worth.
 
 ![Clutches tab](docs/screenshots/clutches.png)
@@ -54,11 +58,12 @@ Real output from real matches. Player names are replaced with stand-ins.
 ![Opening duels by callout](docs/screenshots/openings.png)
 
 ## Features
-- **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Uploads are checked first (wrong, CS:GO, renamed or cut-off files get a clear message), analysing shows each step as it happens, a demo that stops before anyone won is flagged so a partial report isn't mistaken for the whole match, and read errors are explained in plain words. Press **This is me** once and Getleanpeek opens on you from then on. A **round timeline** marks every round you won or lost, with icons for avoidable deaths, wrong buy calls and won clutches; click a round to see its full story. The details sit in three tabs: **Fights** (deaths, clutches & openings), **Teamplay** (coverage, utility) and **Economy** (buy calls, round by round).
+- **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Uploads are checked first (wrong, CS:GO, renamed or cut-off files get a clear message), analysing shows each step as it happens, a demo that stops before anyone won is flagged so a partial report isn't mistaken for the whole match, and read errors are explained in plain words. Press **This is me** once and Getleanpeek opens on you from then on. A **round timeline** marks every round you won or lost, with icons for avoidable deaths, wrong buy calls and won clutches; click a round to see its full story. The details sit in four tabs: **Fights** (deaths, clutches & openings), **Teamplay** (coverage, spacing, utility), **Economy** (buy calls, round by round) and the **Second-half plan**.
   - **Your deaths:** each one labelled *traded*, *avoidable* (re-peeked after a kill, pushed with nobody close enough to trade, died with gear in a lost round), *teammates didn't trade* or *lost a duel*, with the reasons, the cost to your team's round win chance, a moment map, and a one-click-copy console command to jump to it in the demo.
   - **Coverage grade (A–F):** how often you were close enough to trade a teammate and aiming at his killer, graded against every player in the pool, with moments to repeat and to fix.
   - **Spacing:** how far your nearest teammate was each time you died, and how often deaths at that distance get traded across the pool (about 30% within 300 units, 2% alone), with the trades you'd likely have gotten by playing closer. Crossfires are shown but not graded: in the pool so far they didn't lead to more quick trades than playing the same line (see `decisions.md`).
   - **Utility:** grenades thrown, enemies flashed per flash, teammates flashed, grenade damage, and deaths with unused grenades, against the match average. The **flash review** judges every flash that blinded a teammate: *cost a teammate* (they died still blind), *wasted* (no enemy caught) or *trade-off* (it caught an enemy too).
+  - **Second-half plan:** up to three things to change, chosen only from rounds before the side switch, each with what to do and whether the second half followed through. Compared per round; one half is a small sample, so it reports what happened rather than scoring you.
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
@@ -155,6 +160,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/recap.py` | Your latest matches against the ones before |
 | `src/cs2_insights/categories.py` | Premier, Competitive and FACEIT match categories |
 | `src/cs2_insights/duo.py` | How two teammates back each other up |
+| `src/cs2_insights/halfplan.py` | What to change after the first half, and whether it changed |
 | `src/cs2_insights/proof.py` | Whether a focus habit changed since it was picked, and the shareable card |
 | `src/cs2_insights/replay.py` | What each option in a decision was worth |
 | `src/cs2_insights/utility.py` | Grenade and flash summary per match, and the team flash review |

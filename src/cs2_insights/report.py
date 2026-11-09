@@ -17,6 +17,7 @@ from cs2_insights.fights import FightModel, clutches, coverage, coverage_summary
 from cs2_insights.grade import CLOSE, FORCE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, expected_win_rate, pooled_rates  # noqa: F401  (re-exported)
 from cs2_insights.categories import category_of
+from cs2_insights.halfplan import Plan, build_plan
 from cs2_insights.utility import review_team_flashes, team_flashes, utility_summary
 
 UPSET_BELOW = 0.40
@@ -59,6 +60,7 @@ class Report:
     utility: dict = field(default_factory=dict)  # utility.utility_summary()
     team_flashes: pd.DataFrame = field(default_factory=pd.DataFrame)  # your flashes that blinded a teammate
     flash_review: pd.DataFrame = field(default_factory=pd.DataFrame)  # utility.review_team_flashes(): a verdict for each of those
+    plan: Plan | None = None  # halfplan.build_plan(): what to change after the first half, and whether it changed
     clutches: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.clutches() where you were last alive
     openings: pd.DataFrame = field(default_factory=pd.DataFrame)  # fights.opening_duels() you were in
     steamid: str = ""
@@ -179,6 +181,7 @@ def build_report(
         }
     )
 
+    flash_review = review_team_flashes(parsed.blinds, judged, steamid)
     return Report(
         summary=summary,
         rounds=rounds,
@@ -193,7 +196,8 @@ def build_report(
         all_deaths=judged,
         utility=utility_summary(parsed.utility, judged, steamid) if len(parsed.utility) else {},
         team_flashes=team_flashes(parsed.blinds, steamid),
-        flash_review=review_team_flashes(parsed.blinds, judged, steamid),
+        flash_review=flash_review,
+        plan=build_plan(rounds, my_deaths, parsed.trade_chances, calls, flash_review),
         clutches=my_clutches,
         openings=opening_duels(parsed.deaths, parsed.team_rounds, steamid) if len(parsed.deaths) else pd.DataFrame(),
         steamid=steamid,

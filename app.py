@@ -26,6 +26,7 @@ from cs2_insights.duo import Duo, Support, build_duo, partners
 from cs2_insights.fights import FightModel, fit_fight_model, opening_duels
 from cs2_insights.grade import CLOSE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE
 from cs2_insights.habits import MIN_MATCHES, build_habits, checklist
+from cs2_insights.halfplan import DID_IT, NO_CHANGE, SOME_PROGRESS, TOO_FEW, Plan
 from cs2_insights.ingest import DEMO_SUFFIXES, check_demo, completeness_warning, explain_parse_error, ingest, plain_demo
 from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
@@ -301,7 +302,9 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
 
     # Three groups, each with its own sub-tabs, so the page doesn't open on a wall of six choices.
-    fights_tab, teamplay_tab, economy_tab = st.tabs(["⚔️ Fights", "🤝 Teamplay", "💰 Economy"])
+    fights_tab, teamplay_tab, economy_tab, plan_tab = st.tabs(["⚔️ Fights", "🤝 Teamplay", "💰 Economy", "🧭 Second-half plan"])
+    with plan_tab:
+        render_second_half(report, mode)
     with fights_tab:
         deaths_tab, clutch_tab = st.tabs(["💀 Your deaths", "🎯 Clutches & openings"])
         with deaths_tab:
@@ -787,6 +790,50 @@ def render_replay(replay: Replay | None) -> None:
     st.altair_chart(replay_chart(replay, theme_mode()), width="stretch")
     st.markdown(replay.takeaway)
     st.caption(f"{replay.note} These are estimates from Getleanpeek's models, not a prediction of what would have happened.")
+
+
+PLAN_ICONS = {DID_IT: "✅", SOME_PROGRESS: "➖", NO_CHANGE: "⚠️", TOO_FEW: "⏳"}
+
+
+def plan_chart(plan: Plan, mode: str) -> alt.Chart:
+    """Each plan item's count in the first half against the second."""
+    palette = COLORS[mode]
+    first, second = f"Rounds 1–{plan.last_first_round}", "After the switch"
+    rows = pd.DataFrame([{"item": item.label, "half": half, "count": count, "stack": index}
+                         for item in plan.items for index, (half, count) in enumerate(((first, item.first), (second, item.second)))])
+    y = alt.Y("item:N", title=None, sort=[item.label for item in plan.items], axis=alt.Axis(labelLimit=240, ticks=False, domain=False))
+    x = alt.X("count:Q", title="Times", axis=alt.Axis(tickMinStep=1), scale=alt.Scale(domainMin=0))
+    offset = alt.YOffset("half:N", sort=[first, second])
+    bars = alt.Chart(rows).mark_bar(cornerRadiusEnd=4).encode(
+        y=y, x=x, yOffset=offset,
+        color=alt.Color("half:N", title=None, sort=[first, second], scale=alt.Scale(domain=[first, second], range=[palette["neutral"], palette["Your team"]]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        tooltip=[alt.Tooltip("item:N", title="Habit"), alt.Tooltip("half:N", title="When"), alt.Tooltip("count:Q", title="Times")],
+    ).properties(height=alt.Step(20))
+    labels = alt.Chart(rows).mark_text(align="left", dx=5, fontSize=12, color=palette["text"]).encode(y=y, x=x, yOffset=offset, text="count:Q").properties(height=alt.Step(20))
+    return alt.layer(bars, labels)
+
+
+def render_second_half(report: Report, mode: str) -> None:
+    plan = report.plan
+    if plan is None:
+        st.info("This match doesn't have a first half to plan from.")
+        return
+    st.markdown(f"What you'd want to hear at the side switch, written from **rounds 1–{plan.last_first_round}** only. "
+                f"After round {plan.last_first_round} you switch to **{plan.next_side}**.")
+    if not plan.items:
+        st.success("A clean first half: nothing to change.")
+        return
+    for number, item in enumerate(plan.items, start=1):
+        with st.container(border=True):
+            st.markdown(f"**{number}. {item.label}** · {item.first} time{'s' if item.first != 1 else ''} in the first half  \n**In the second half:** {item.action}")
+            if item.status:
+                detail = f"{item.first} in {plan.first_rounds} rounds, then {item.second} in {plan.second_rounds}."
+                st.markdown(f"{PLAN_ICONS[item.status]} **{item.status}.** {detail}")
+    if plan.second_rounds:
+        st.altair_chart(plan_chart(plan, mode), width="stretch")
+    st.caption("One half is a small sample, so read this as what happened, not a score. \"Did it\" means the rate per round at least halved; "
+               "overtime isn't counted, and a second half under 6 rounds isn't judged.")
 
 
 def render_buy_calls(report: Report) -> None:
