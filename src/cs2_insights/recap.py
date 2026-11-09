@@ -73,7 +73,7 @@ def _average(frame: pd.DataFrame, column: str) -> float | None:
     return float(numbers.mean()) if len(numbers) else None
 
 
-def _change(key: str, earlier: pd.DataFrame, recent: pd.DataFrame) -> Change | None:
+def measure_change(key: str, earlier: pd.DataFrame, recent: pd.DataFrame) -> Change | None:
     label, column, lower_is_better = FOCUS[key]
     before, after = _numbers(earlier, column), _numbers(recent, column)
     if before.empty or after.empty:
@@ -93,7 +93,7 @@ def build_recap(past: pd.DataFrame, window: int = RECENT_MATCHES) -> Recap | Non
         return None
     size = min(window, len(ordered) // 2)
     recent, earlier = ordered.iloc[-size:], ordered.iloc[-2 * size:-size]
-    changes = [c for c in (_change(key, earlier, recent) for key in FOCUS) if c]
+    changes = [c for c in (measure_change(key, earlier, recent) for key in FOCUS) if c]
     ranked = sorted(changes, key=lambda c: c.score)
     return Recap(
         window=size,

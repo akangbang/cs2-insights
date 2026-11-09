@@ -146,6 +146,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/demo.py` | Demo parsing: rounds, teams, players, deaths, positions, grenades and flashes |
 | `src/cs2_insights/fights.py` | Death verdicts, trade chance, coverage grade, clutches and opening duels |
 | `src/cs2_insights/recap.py` | Your latest matches against the ones before |
+| `src/cs2_insights/proof.py` | Whether a focus habit changed since it was picked |
 | `src/cs2_insights/replay.py` | What each option in a decision was worth |
 | `src/cs2_insights/utility.py` | Grenade and flash summary per match, and the team flash review |
 | `src/cs2_insights/progress.py` | Match-by-match history for progress and the weekly focus |
