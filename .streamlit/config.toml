@@ -10,7 +10,7 @@ gatherUsageStats = false
 # Hide the Deploy button and developer menu.
 toolbarMode = "viewer"
 
-# LeanPeek blue as the accent (validated chart palette slot 1), per mode so dark mode still follows the OS.
+# Getleanpeek blue as the accent (validated chart palette slot 1), per mode so dark mode still follows the OS.
 [theme.light]
 primaryColor = "#2a78d6"
 
