@@ -45,3 +45,13 @@ def test_hosted_mode_without_a_login_shows_nothing(monkeypatch):
     assert not app.exception
     assert "Sign-in is required" in app.info[0].value
     assert not app.selectbox and not app.header and not app.metric
+
+
+def test_hosted_mode_offers_sign_in_once_login_is_set_up(monkeypatch):
+    monkeypatch.setenv("HALFTIME_HOSTED", "1")
+    app = AppTest.from_file("../app.py", default_timeout=120)
+    app.secrets["auth"] = {"redirect_uri": "https://example.test/oauth2callback"}
+    app.run()
+    assert not app.exception
+    assert [b.label for b in app.button] == ["Sign in with Google"]
+    assert not app.selectbox and not app.header and not app.metric

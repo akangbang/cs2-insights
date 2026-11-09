@@ -44,7 +44,7 @@ def connect(url: str | None = None) -> psycopg.Connection:
     url = url or os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL isn't set; add it to .env.")
-    return psycopg.connect(url, connect_timeout=3)
+    return psycopg.connect(url, connect_timeout=10)  # a sleeping hosted database takes a moment to wake
 
 
 def init_schema(conn: psycopg.Connection) -> None:

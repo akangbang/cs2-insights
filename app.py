@@ -1281,6 +1281,14 @@ def history_stamp() -> int:
         return 0
 
 
+def login_available() -> bool:
+    """Whether Google sign-in has been set up in the app's secrets."""
+    try:
+        return "auth" in st.secrets
+    except Exception:  # no secrets file at all
+        return False
+
+
 def current_user() -> str | None:
     """Who is using the app: LOCAL_USER on your own PC; when hosted, a hash of the login, or None if not logged in."""
     if not HOSTED:
@@ -2079,10 +2087,18 @@ def markdown_page(file: str):
 st.set_page_config(page_title="Getleanpeek", page_icon="⏱️", layout="wide")
 if current_user() is None:
     st.title("Getleanpeek")
-    st.info("Sign-in is required, and isn't available yet.")
+    if login_available():
+        st.write("Your CS2 decisions, graded. Sign in to upload a demo and see your report.")
+        if st.button("Sign in with Google", type="primary"):
+            st.login("google")
+    else:
+        st.info("Sign-in is required, and isn't available yet.")
     st.caption(DISCLAIMER)
     st.stop()
 track("session_start", once=True)
+if HOSTED:
+    if st.sidebar.button("Sign out"):
+        st.logout()
 navigation = st.navigation(
     [
         st.Page(report_page, title="Match report", icon="📊", default=True),
