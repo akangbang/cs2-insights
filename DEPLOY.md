@@ -7,7 +7,6 @@ This runs the app on Streamlit Community Cloud with a free Neon database. It cos
 ## Before you invite anyone
 
 - Replace both `[contact email]` placeholders in `legal/privacy.md`.
-- Replace `[Neon region]` in `legal/privacy.md` with the region you choose in step 1.
 - Have a lawyer review the privacy policy and terms before a public launch.
 
 ## 1. Create the database (Neon)

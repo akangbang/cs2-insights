@@ -41,7 +41,7 @@ A demo contains information about all 10 players. Getleanpeek only shows the mat
 
 ## Where it's stored
 
-The app runs on Streamlit Community Cloud, operated by Snowflake. Match data is stored in a PostgreSQL database hosted by Neon in [Neon region]. Steam data is only stored in the places listed here.
+The app runs on Streamlit Community Cloud, operated by Snowflake. Match data is stored in a PostgreSQL database hosted by Neon in the United States (Ohio). Steam data is only stored in the places listed here.
 
 ## Your choices
 
