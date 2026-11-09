@@ -1,7 +1,10 @@
+from io import BytesIO
+
 import pandas as pd
 import pytest
+from PIL import Image
 
-from cs2_insights.proof import IMPROVED, NO_BASELINE, SAME, WAITING, WORSE, build_proof, latest_match
+from cs2_insights.proof import CARD_SIZE, IMPROVED, NO_BASELINE, SAME, WAITING, WORSE, build_proof, change_words, latest_match, proof_card
 
 
 def _past(repeeks, rate=None, ids=None):
@@ -55,6 +58,18 @@ def test_compares_ids_as_numbers():
 def test_latest_match_ignores_uploads():
     assert latest_match(_past([1, 1], ids=["1000", "upload_ab"])) == "1000"
     assert latest_match(pd.DataFrame()) is None
+
+
+def test_describes_a_higher_share_in_points():
+    proof = build_proof(_past([1] * 6, rate=[0.2, 0.2, 0.2, 0.7, 0.7, 0.7]), "coverage", "1002")
+    assert proof.status == IMPROVED and change_words(proof.change) == "50 points higher"
+
+
+def test_card_is_a_share_sized_png():
+    proof = build_proof(_past([3, 3, 3, 1, 1, 1]), "repeek", "1002")
+    assert change_words(proof.change) == "2.0 fewer per match"
+    image = Image.open(BytesIO(proof_card(proof)))
+    assert image.format == "PNG" and image.size == CARD_SIZE
 
 
 @pytest.mark.parametrize("since", ["1005", "2000"])
