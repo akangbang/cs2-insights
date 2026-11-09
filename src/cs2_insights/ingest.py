@@ -42,7 +42,7 @@ def check_demo(name: str, head: bytes, size: int) -> str | None:
     if size == 0:
         return f"{name} is empty. The download probably failed: try downloading the match again."
     if suffix == ".dem" and head.startswith(CSGO_SIGNATURE):
-        return f"{name} is a CS:GO demo. Halftime reads CS2 demos only."
+        return f"{name} is a CS:GO demo. LeanPeek reads CS2 demos only."
     if not head.startswith(SIGNATURES[suffix]):
         return f"{name} isn't a real {suffix} file, even though it's named like one. It may be renamed, or something else entirely."
     if size < MIN_DEMO_BYTES:
@@ -60,9 +60,9 @@ def explain_parse_error(error: BaseException) -> str:
     if isinstance(error, ValueError) and "No completed rounds" in str(error):
         return "This demo has no finished rounds. It may be warmup only, a match abandoned at the start, or not a competitive match."
     if isinstance(error, MemoryError):
-        return "This demo is too big to analyse here. Try a shorter match, or run Halftime on your own PC."
-    return ("Halftime couldn't read this demo. It's most likely cut off or damaged: download the match again. "
-            "If it keeps happening, the demo may come from a CS2 update Halftime doesn't support yet.")
+        return "This demo is too big to analyse here. Try a shorter match, or run LeanPeek on your own PC."
+    return ("LeanPeek couldn't read this demo. It's most likely cut off or damaged: download the match again. "
+            "If it keeps happening, the demo may come from a CS2 update LeanPeek doesn't support yet.")
 
 
 def completeness_warning(team_a_score: int, team_b_score: int) -> str | None:

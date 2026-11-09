@@ -1,4 +1,4 @@
-"""Replay a decision: what each option a player had was worth, from the models Halftime already tests.
+"""Replay a decision: what each option a player had was worth, from the models LeanPeek already tests.
 
 These are estimates of each option's value, not a prediction of what would have happened. For a
 death, a demo can't show whether you'd have survived by playing differently, so "stayed alive" is

@@ -1,8 +1,8 @@
-# Halftime
+# LeanPeek
 
 A decision coach for CS2: it grades your decisions, not just your aim.
 
-Most stat sites report what happened. Halftime answers "what should I have done?". It reads your match demos and judges the decisions you control: every death (was it avoidable, did anyone trade you?), how well you cover teammates, your grenades and flashes, your clutches, your opening duels, and every force-or-save buy call. Each verdict comes with the facts behind it, a picture of the moment, and what to do next time. Pick one habit to work on and watch it change match by match.
+Most stat sites report what happened. LeanPeek answers "what should I have done?". It reads your match demos and judges the decisions you control: every death (was it avoidable, did anyone trade you?), how well you cover teammates, your grenades and flashes, your clutches, your opening duels, and every force-or-save buy call. Each verdict comes with the facts behind it, a picture of the moment, and what to do next time. Pick one habit to work on and watch it change match by match.
 
 ## Screenshots
 Real output from real matches. Player names are replaced with stand-ins.
@@ -50,7 +50,7 @@ Real output from real matches. Player names are replaced with stand-ins.
 ![Opening duels by callout](docs/screenshots/openings.png)
 
 ## Features
-- **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Uploads are checked first (wrong, CS:GO, renamed or cut-off files get a clear message), analysing shows each step as it happens, a demo that stops before anyone won is flagged so a partial report isn't mistaken for the whole match, and read errors are explained in plain words. Press **This is me** once and Halftime opens on you from then on. A **round timeline** marks every round you won or lost, with icons for avoidable deaths, wrong buy calls and won clutches; click a round to see its full story. The details sit in three tabs: **Fights** (deaths, clutches & openings), **Teamplay** (coverage, utility) and **Economy** (buy calls, round by round).
+- **Match report.** Pick one of your CS2 replays or upload a demo (`.dem`, or FACEIT's compressed `.dem.gz` / `.dem.zst`), then choose the player to review. Uploads are checked first (wrong, CS:GO, renamed or cut-off files get a clear message), analysing shows each step as it happens, a demo that stops before anyone won is flagged so a partial report isn't mistaken for the whole match, and read errors are explained in plain words. Press **This is me** once and LeanPeek opens on you from then on. A **round timeline** marks every round you won or lost, with icons for avoidable deaths, wrong buy calls and won clutches; click a round to see its full story. The details sit in three tabs: **Fights** (deaths, clutches & openings), **Teamplay** (coverage, utility) and **Economy** (buy calls, round by round).
   - **Your deaths:** each one labelled *traded*, *avoidable* (re-peeked after a kill, pushed with nobody close enough to trade, died with gear in a lost round), *teammates didn't trade* or *lost a duel*, with the reasons, the cost to your team's round win chance, a moment map, and a one-click-copy console command to jump to it in the demo.
   - **Coverage grade (A–F):** how often you were close enough to trade a teammate and aiming at his killer, graded against every player in the pool, with moments to repeat and to fix.
   - **Spacing:** how far your nearest teammate was each time you died, and how often deaths at that distance get traded across the pool (about 30% within 300 units, 2% alone), with the trades you'd likely have gotten by playing closer. Crossfires are shown but not graded: in the pool so far they didn't lead to more quick trades than playing the same line (see `decisions.md`).

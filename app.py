@@ -1,4 +1,4 @@
-"""Halftime: upload a CS2 demo, get an economy report.
+"""LeanPeek: upload a CS2 demo, get an economy report.
 
 Run with: streamlit run app.py
 """
@@ -60,7 +60,7 @@ LOCAL_USER = "local"
 TRACKING = os.getenv("HALFTIME_NO_TRACKING") != "1" and not HIDE_NAMES
 WATCH_LEAD_SECONDS = 5  # "watch" jumps to a few seconds before the moment
 DISCLAIMER = (
-    "Halftime is not affiliated with or endorsed by Valve Corporation. "
+    "LeanPeek is not affiliated with or endorsed by Valve Corporation. "
     "Counter-Strike and CS2 are trademarks of Valve Corporation."
 )
 
@@ -319,7 +319,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with rounds_tab:
             render_economy(report, mode)
     st.caption(
-        f"Win chances come from Halftime's pool of {s['pool_rounds']:,} rounds. Buy calls are graded by playing both "
+        f"Win chances come from LeanPeek's pool of {s['pool_rounds']:,} rounds. Buy calls are graded by playing both "
         "choices forward a few rounds with CS2's money rules; deaths and coverage from where everyone stood and aimed. "
         "Early beta: the pool is still small, so treat the numbers as a guide."
     )
@@ -460,7 +460,7 @@ def render_scorecards(report: Report, past: pd.DataFrame, match_id: str | None) 
     with cards[3].container(border=True):
         st.metric("Buy calls right", f"{s['calls_right']} of {s['calls']}", change(s["calls_wrong"], "wrong_calls", unit=" wrong"),
                   delta_color="inverse",
-                  help="Rounds your team could force or save, where Halftime's simulation agrees with what you did.")
+                  help="Rounds your team could force or save, where LeanPeek's simulation agrees with what you did.")
         st.caption(f"Wrong calls cost about {s['rounds_lost_to_calls']:.1f} rounds." if s["calls_wrong"] else "No costly calls.")
 
 
@@ -477,7 +477,7 @@ def disagree_button(report: Report, kind: str, verdict: str, round_: int, tick: 
         return
     key = f"disagree_{kind}_{where}_{report.match_id}_{report.steamid}_{tick}"
     if st.session_state.get(key):
-        st.caption("👎 Noted, thanks. This helps find where Halftime gets it wrong.")
+        st.caption("👎 Noted, thanks. This helps find where LeanPeek gets it wrong.")
         return
     with st.popover("👎 Disagree"):
         st.caption("What looks wrong?")
@@ -676,7 +676,7 @@ def render_coverage(report: Report, mode: str) -> None:
         if c["grade"]:
             st.altair_chart(grade_scale_chart(c["score"], c["grade"], report.fight_model.setup_cuts, mode), width="stretch")
         st.markdown(
-            "**How it's graded.** For every teammate who died within 1,600 units of you, Halftime checks two things "
+            "**How it's graded.** For every teammate who died within 1,600 units of you, LeanPeek checks two things "
             f"at the moment he died: how far you were from his killer, and how far your crosshair was from the killer. "
             f"Players trade 40%+ of the time when close and aiming at the killer, and almost never when over "
             f"{fights.TRADE_RANGE:,} units away or facing elsewhere."
@@ -782,7 +782,7 @@ def render_replay(replay: Replay | None) -> None:
     st.markdown(f"**🔁 Replay: {replay.question}**")
     st.altair_chart(replay_chart(replay, theme_mode()), width="stretch")
     st.markdown(replay.takeaway)
-    st.caption(f"{replay.note} These are estimates from Halftime's models, not a prediction of what would have happened.")
+    st.caption(f"{replay.note} These are estimates from LeanPeek's models, not a prediction of what would have happened.")
 
 
 def render_buy_calls(report: Report) -> None:
@@ -791,7 +791,7 @@ def render_buy_calls(report: Report) -> None:
         st.write("Your team never had a force-or-save decision this match: every buy round was a clear full buy or a forced eco.")
         return
     st.markdown(
-        "A **buy call** is a round where your team could afford a force but not a full buy. Halftime plays both "
+        "A **buy call** is a round where your team could afford a force but not a full buy. LeanPeek plays both "
         "choices forward up to four rounds with CS2's money rules and checks which wins more."
     )
     wrong = calls[calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE])].sort_values("cost", ascending=False)
@@ -1014,7 +1014,7 @@ def render_spacing(report: Report, mode: str) -> None:
             st.markdown(f"Across the pool so far ({n:,} deaths), crossfires **didn't** lead to more quick trades: {cross:.0%} of "
                         f"deaths were traded within 2 seconds with a crossfire set up, {line:.0%} on the same line. A crossfire's "
                         "real value is probably stopping the kill in the first place, since the killer can't watch both angles. "
-                        "Halftime only sees deaths, so it can't measure that yet, and doesn't grade crossfires until it can.")
+                        "LeanPeek only sees deaths, so it can't measure that yet, and doesn't grade crossfires until it can.")
 
 
 FLASH_ICONS = {FLASH_COST_TEAMMATE: "❌", FLASH_WASTED: "⚠️", FLASH_TRADE_OFF: "➖"}
@@ -1306,10 +1306,10 @@ def focus_chart(past: pd.DataFrame, column: str, mode: str) -> alt.Chart:
 
 GUIDE_STEPS = [
     ("📥", "Get a match",
-     "In CS2 open **Watch → Your Matches** and press **Download** on a match. Halftime finds it in your replays folder "
+     "In CS2 open **Watch → Your Matches** and press **Download** on a match. LeanPeek finds it in your replays folder "
      "automatically. On FACEIT, download the demo from the match room and use **Upload a demo** in the sidebar."),
     ("🗂️", "Pick it", "Choose the match in the sidebar. The newest download is at the top."),
-    ("🙋", "Pick yourself", "Choose your name, then press **This is me** so Halftime opens on you from then on."),
+    ("🙋", "Pick yourself", "Choose your name, then press **This is me** so LeanPeek opens on you from then on."),
     ("🎯", "Learn one thing", "Every death, buy, grenade and clutch is judged with the reasons. Pick one habit to work on in "
      "**Your habits** and watch it change match by match."),
 ]
@@ -1325,7 +1325,7 @@ def render_guide() -> None:
                 st.caption(text)
 
     if saved_setting("me"):
-        with st.expander("How Halftime works"):
+        with st.expander("How LeanPeek works"):
             steps()
     else:
         st.markdown("#### Get your first report in four steps")
@@ -1336,7 +1336,7 @@ def render_guide() -> None:
 
 
 def report_page() -> None:
-    st.title("Halftime")
+    st.title("LeanPeek")
     st.write("Your CS2 decisions, graded: your buys, your deaths, and how well you cover your teammates.")
 
     with st.sidebar:
@@ -1420,7 +1420,7 @@ def report_page() -> None:
         if st.button(f"⭐ This is me: always open my reports as {picked.split('  ·  ')[0]}"):
             save_setting("me", steamid)
             track("player_saved", steamid=steamid)
-            st.toast("Saved. Halftime will pick you automatically from now on.")
+            st.toast("Saved. LeanPeek will pick you automatically from now on.")
 
     track("report_viewed", steamid=steamid, match_id=match["match_id"], once=True)
     past = player_history(steamid, fight_model, slope, history_stamp(), current_user() if HOSTED else None)
@@ -1546,8 +1546,8 @@ def render_checklist(habits) -> None:
             st.markdown(f"🎯 **This week's focus: {focus[0].lower()}.**")
         for i, item in enumerate(items):
             st.checkbox(item, key=f"checklist_{i}")
-        text = "Halftime: before your next match\n" + (f"Focus: {focus[0]}\n" if focus else "") + "".join(f"[ ] {i}\n" for i in items)
-        st.download_button("Save as a text file", text, file_name="halftime-checklist.txt", mime="text/plain",
+        text = "LeanPeek: before your next match\n" + (f"Focus: {focus[0]}\n" if focus else "") + "".join(f"[ ] {i}\n" for i in items)
+        st.download_button("Save as a text file", text, file_name="leanpeek-checklist.txt", mime="text/plain",
                            help="Keep it open on a second screen while you play.", on_click=lambda: track("checklist_saved"))
 
 
@@ -1593,7 +1593,7 @@ def render_recap(past: pd.DataFrame, steamid: str) -> None:
         note = (f"Compares your last {recap.window} matches with the {recap.window} before them, not calendar weeks, because a demo doesn't "
                 "say when it was played. A change only counts when it's bigger than your normal match-to-match swing.")
         if recap.skipped_uploads:
-            note += f" {recap.skipped_uploads} uploaded demo{'s are' if recap.skipped_uploads != 1 else ' is'} left out, since Halftime can't tell when they were played."
+            note += f" {recap.skipped_uploads} uploaded demo{'s are' if recap.skipped_uploads != 1 else ' is'} left out, since LeanPeek can't tell when they were played."
         st.caption(note)
 
 
@@ -1740,7 +1740,7 @@ def accuracy_chart(table: pd.DataFrame, mode: str) -> alt.Chart:
 
 def accuracy_page() -> None:
     st.title("How accurate is it?")
-    st.write("Halftime's verdicts rest on three models, so here they're tested in the open. For each match, the models are "
+    st.write("LeanPeek's verdicts rest on three models, so here they're tested in the open. For each match, the models are "
              "fitted on all the other matches and then predict the one they haven't seen. If a model is honest, what it calls "
              "\"30%\" should happen about 30% of the time.")
     if database() is None:
@@ -1785,7 +1785,7 @@ def confirmed(key: str) -> bool:
 
 def data_page() -> None:
     st.title("Your data")
-    st.write("See what Halftime keeps about you and delete it. Deletions can't be undone.")
+    st.write("See what LeanPeek keeps about you and delete it. Deletions can't be undone.")
     conn = database()
     if conn is None:
         st.warning("This page needs the match database. Start it with `docker compose up -d`, then refresh.")
@@ -1838,9 +1838,9 @@ def markdown_page(file: str):
     return page
 
 
-st.set_page_config(page_title="Halftime", page_icon="⏱️", layout="wide")
+st.set_page_config(page_title="LeanPeek", page_icon="⏱️", layout="wide")
 if current_user() is None:
-    st.title("Halftime")
+    st.title("LeanPeek")
     st.info("Sign-in is required, and isn't available yet.")
     st.caption(DISCLAIMER)
     st.stop()
