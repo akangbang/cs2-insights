@@ -6,6 +6,7 @@ Run with: streamlit run app.py
 import dataclasses
 import hashlib
 import os
+import sys
 import tempfile
 import uuid
 from datetime import datetime
@@ -15,6 +16,9 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+# Streamlit's hosting installs requirements.txt but not this project, so point Python at its code.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from cs2_insights import analytics, calibration, db, privacy, spacing
 from cs2_insights.categories import ALL, LABELS, category_counts, category_of, filter_matches
