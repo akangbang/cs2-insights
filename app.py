@@ -17,7 +17,8 @@ import pandas as pd
 import streamlit as st
 
 from cs2_insights import analytics, calibration, db, privacy, spacing
-from cs2_insights.demo import ParsedDemo, parse_demo
+from cs2_insights.categories import ALL, LABELS, category_counts, category_of, filter_matches
+from cs2_insights.demo import ParsedDemo, match_id_from_path, parse_demo
 from cs2_insights import fights
 from cs2_insights.confidence import call_confidence, clutch_confidence, death_confidence, describe, grade_confidence, habit_confidence
 from cs2_insights.demo import TICK_RATE
@@ -282,6 +283,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     past = past if past is not None else pd.DataFrame()
 
     st.header(f"{map_label(s['map'])} · {s['result']} {s['your_score']}–{s['their_score']}")
+    st.badge(LABELS[s["match_type"]], color="blue")
     st.caption(f"Reviewing **{s['name']}** · {s['rounds']} rounds")
     st.markdown(match_story(report))
     if current:
@@ -1336,6 +1338,30 @@ def render_guide() -> None:
 # ---------- pages ----------
 
 
+def stored_match_types() -> dict:
+    conn = database()
+    if conn is None:
+        return {}
+    try:
+        return db.match_types(conn)
+    except Exception:
+        conn.rollback()
+        return {}
+
+
+def category_picker(matches: list, key: str) -> list:
+    """Premier, Competitive and FACEIT shown apart, when there's more than one kind to choose from."""
+    counts = category_counts(matches)
+    if len(counts) < 2:
+        return matches
+    options = [ALL, *counts]
+    if st.session_state.get(key) not in options:  # e.g. the new player has no matches of the old category
+        st.session_state.pop(key, None)
+    choice = st.segmented_control("Match type", options, default=ALL, key=key,
+                                  format_func=lambda k: f"All ({len(matches)})" if k == ALL else f"{LABELS[k]} ({counts[k]})")
+    return filter_matches(matches, choice)
+
+
 def report_page() -> None:
     st.title("Getleanpeek")
     st.write("Your CS2 decisions, graded: your buys, your deaths, and how well you cover your teammates.")
@@ -1352,8 +1378,14 @@ def report_page() -> None:
             st.info("No demos found yet. Download a match in CS2 (step 1 below), then refresh this page.")
             render_guide()
             return
+        stored = stored_match_types()
+        kinds = {p: category_of(stored[match_id_from_path(p)]) for p in demos if match_id_from_path(p) in stored}
+        present = [k for k in LABELS if k in kinds.values()]
+        if len(present) > 1:
+            shown = st.sidebar.selectbox("Match type", [ALL, *present], format_func=lambda k: "All" if k == ALL else LABELS[k], key="report_category")
+            demos = [p for p in demos if shown == ALL or kinds.get(p) == shown]
         labels = {
-            f"{datetime.fromtimestamp(p.stat().st_mtime):%b %d, %Y %H:%M} · {p.stat().st_size / 1e6:.0f} MB": p
+            " · ".join([f"{datetime.fromtimestamp(p.stat().st_mtime):%b %d, %Y %H:%M}", *([LABELS[kinds[p]]] if p in kinds else []), f"{p.stat().st_size / 1e6:.0f} MB"]): p
             for p in demos
         }
         choice = st.sidebar.selectbox("Match", list(labels))
@@ -1471,6 +1503,8 @@ def habits_page() -> None:
     default = next((i for i, label in enumerate(options) if labels[label] == remembered), 0)
     picked = st.sidebar.selectbox("Which player are you?", options, index=default)
     st.session_state["steamid"] = labels[picked]
+    played = [m for m in matches if labels[picked] in set(m.player_rounds["steamid"])]
+    matches = category_picker(played, "habits_category")
 
     with_fights = [m for m in matches if len(m.deaths)]
     habits = build_habits(matches, labels[picked], slope, fight_model, pool=(pool_deaths, pool_chances))
@@ -1481,11 +1515,15 @@ def habits_page() -> None:
     if outdated:
         st.caption(f"{outdated} stored match{'es were' if outdated != 1 else ' was'} parsed before deaths were tracked; "
                    "re-add your replays from the sidebar to include them.")
-    past = history(matches, labels[picked], fight_model, slope)
-    render_recap(past, labels[picked])
+    # A focus starts counting from the newest match of any kind, whichever category is on screen.
+    every_match = history(played, labels[picked], fight_model, slope)
+    newest = latest_match(every_match) or "0"
+    shown_ids = {m.match.iloc[0]["match_id"] for m in matches}
+    past = every_match[every_match["match_id"].isin(shown_ids)] if len(every_match) else every_match
+    render_recap(past, labels[picked], newest)
     render_habit_scorecards(habits)
     render_checklist(habits)
-    render_focus(past, labels[picked], mode)
+    render_focus(past, labels[picked], mode, newest)
 
     if habits.matches < MIN_MATCHES:
         st.info(f"Habits need at least {MIN_MATCHES} of your matches; you have {habits.matches}. Add more replays from the sidebar.")
@@ -1552,20 +1590,20 @@ def render_checklist(habits) -> None:
                            help="Keep it open on a second screen while you play.", on_click=lambda: track("checklist_saved"))
 
 
-def start_focus(key: str, past: pd.DataFrame, steamid: str) -> None:
+def start_focus(key: str, newest: str, steamid: str) -> None:
     """Save a new focus and remember the newest match, so progress only counts matches after it."""
     save_setting("focus", key)
-    save_setting("focus_since", latest_match(past) or "0")
+    save_setting("focus_since", newest)
     track("focus_set", steamid=steamid, detail=key)
 
 
-def render_proof(past: pd.DataFrame, key: str, steamid: str) -> None:
+def render_proof(past: pd.DataFrame, key: str, steamid: str, newest: str) -> None:
     """Has this habit actually changed since you chose it? If it has, a card to share."""
     since = saved_setting("focus_since")
     if since is None:  # a focus picked before the starting point was saved: count from now
-        since = latest_match(past)
-        if since is None or database() is None:
+        if database() is None:
             return
+        since = newest
         save_setting("focus_since", since)
     proof = build_proof(past, key, since)
     st.markdown("#### 🏅 Is it working?")
@@ -1592,7 +1630,7 @@ def render_proof(past: pd.DataFrame, key: str, steamid: str) -> None:
                "uploaded demos are left out because Getleanpeek can't tell when they were played.")
 
 
-def render_recap(past: pd.DataFrame, steamid: str) -> None:
+def render_recap(past: pd.DataFrame, steamid: str, newest: str) -> None:
     """Your latest matches against the same number before them: what got better, what slipped, what to work on."""
     recap = build_recap(past)
     if recap is None:
@@ -1628,7 +1666,7 @@ def render_recap(past: pd.DataFrame, steamid: str) -> None:
         moved_tile(cols[3], "Slipped most", recap.slipped)
         if recap.slipped and recap.slipped.key != saved_setting("focus") and database() is not None:
             if st.button(f"🎯 Make \"{recap.slipped.label.lower()}\" my focus"):
-                start_focus(recap.slipped.key, past, steamid)
+                start_focus(recap.slipped.key, newest, steamid)
                 st.rerun()
         note = (f"Compares your last {recap.window} matches with the {recap.window} before them, not calendar weeks, because a demo doesn't "
                 "say when it was played. A change only counts when it's bigger than your normal match-to-match swing.")
@@ -1637,7 +1675,7 @@ def render_recap(past: pd.DataFrame, steamid: str) -> None:
         st.caption(note)
 
 
-def render_focus(past: pd.DataFrame, steamid: str, mode: str) -> None:
+def render_focus(past: pd.DataFrame, steamid: str, mode: str, newest: str) -> None:
     """Pick one habit to work on; see it match by match against your average."""
     st.subheader("🎯 Your focus")
     keys = list(FOCUS)
@@ -1650,7 +1688,7 @@ def render_focus(past: pd.DataFrame, steamid: str, mode: str) -> None:
         st.caption("Working on one thing at a time is how habits change. Your choice shows on every match report.")
         return
     if choice != saved and database() is not None:
-        start_focus(choice, past, steamid)
+        start_focus(choice, newest, steamid)
     label, column, lower_is_better = FOCUS[choice]
     if past.empty or column not in past or past[column].dropna().empty:
         st.write("No data for this habit yet. Re-add your replays from the sidebar.")
@@ -1658,7 +1696,7 @@ def render_focus(past: pd.DataFrame, steamid: str, mode: str) -> None:
     st.altair_chart(focus_chart(past, column, mode), width="stretch")
     direction = "Lower" if lower_is_better else "Higher"
     st.caption(f"{label}, match by match, oldest on the left. {direction} is better; the dashed line is your average.")
-    render_proof(past, choice, steamid)
+    render_proof(past, choice, steamid, newest)
 
 
 def render_habit_openings(matches: list, steamid: str, mode: str) -> None:

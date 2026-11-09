@@ -16,6 +16,7 @@ from cs2_insights import fights
 from cs2_insights.fights import FightModel, clutches, coverage, coverage_summary, judge_deaths, opening_duels
 from cs2_insights.grade import CLOSE, FORCE, GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
 from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE, expected_win_rate, pooled_rates  # noqa: F401  (re-exported)
+from cs2_insights.categories import category_of
 from cs2_insights.utility import review_team_flashes, team_flashes, utility_summary
 
 UPSET_BELOW = 0.40
@@ -142,6 +143,7 @@ def build_report(
     their_score = int(match["team_b_score"] if my_team == "A" else match["team_a_score"])
     summary = {
         "map": match["map"],
+        "match_type": category_of(match.get("match_type")),
         "your_score": my_score,
         "their_score": their_score,
         "result": "Win" if my_score > their_score else "Loss" if my_score < their_score else "Draw",
