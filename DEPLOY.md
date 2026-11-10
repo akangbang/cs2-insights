@@ -45,6 +45,8 @@ Keep `HALFTIME_SECRET_KEY` somewhere safe. If it's lost, stored Steam auth codes
 4. Open **Advanced settings**, choose **Python 3.12**, and paste your secrets.
 5. Deploy. The first build takes a few minutes.
 
+Sign in through Steam needs no setup: it sends players back to the site address in `redirect_uri`. If your app's address is different, add `HALFTIME_PUBLIC_URL = "https://your-address/"` to the secrets.
+
 ## 5. Check it
 
 - Without signing in, the site should show only the sign-in button.

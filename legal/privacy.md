@@ -53,7 +53,7 @@ The app runs on Streamlit Community Cloud, operated by Snowflake. Match data is 
 
 ## Services we use
 
-When you sign in with Google, Getleanpeek receives your email address and turns it into a scrambled ID; the address itself isn't stored in our database. Getleanpeek uses the Steam Web API to look up profiles and match share codes when you ask it to. Getleanpeek is not affiliated with or endorsed by Valve Corporation.
+When you sign in through Steam, Getleanpeek receives only your public Steam ID. It turns it into a scrambled account ID and saves the Steam ID as "This is me", so your reports open on you. When you sign in with Google, Getleanpeek receives your email address and turns it into a scrambled ID; the address itself isn't stored in our database. Getleanpeek uses the Steam Web API to look up profiles and match share codes when you ask it to. Getleanpeek is not affiliated with or endorsed by Valve Corporation.
 
 ## Contact
 

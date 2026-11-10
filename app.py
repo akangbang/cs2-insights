@@ -20,7 +20,7 @@ import streamlit as st
 # Streamlit's hosting installs requirements.txt but not this project, so point Python at its code.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from cs2_insights import analytics, calibration, db, privacy, spacing
+from cs2_insights import analytics, calibration, db, privacy, spacing, steamlogin
 from cs2_insights.breakdown import HALF, MIN_MAP_MATCHES, Misses, best_and_worst, collect, map_breakdown, side_breakdown, side_notes
 from cs2_insights.cards import match_card
 from cs2_insights.categories import ALL, LABELS, category_counts, category_of, filter_matches
@@ -1358,10 +1358,41 @@ def login_available() -> bool:
         return False
 
 
+def public_url() -> str | None:
+    """The hosted app's own address, for Steam to send players back to: HALFTIME_PUBLIC_URL, or the Google redirect's site."""
+    url = os.getenv("HALFTIME_PUBLIC_URL")
+    if not url:
+        try:
+            url = str(st.secrets["auth"]["redirect_uri"]).removesuffix("oauth2callback")
+        except Exception:
+            return None
+    return url.rstrip("/") + "/"
+
+
+def steam_available() -> bool:
+    return HOSTED and public_url() is not None
+
+
+def finish_steam_login() -> None:
+    """When Steam has just sent the player back, check the reply with Steam and remember who they are for this visit."""
+    params = st.query_params.to_dict()
+    if "openid.mode" not in params:
+        return
+    st.query_params.clear()  # so the signed reply isn't left in the address bar or reused
+    steamid = steamlogin.verify(params, public_url()) if public_url() else None
+    if steamid:
+        st.session_state["steam_id"] = steamid
+    else:
+        st.session_state["steam_failed"] = True
+
+
 def current_user() -> str | None:
     """Who is using the app: LOCAL_USER on your own PC; when hosted, a hash of the login, or None if not logged in."""
     if not HOSTED:
         return LOCAL_USER
+    steam = st.session_state.get("steam_id")
+    if steam:
+        return hashlib.sha256(f"steam:{steam}".encode()).hexdigest()[:32]  # same scrambling as Google sign-in
     try:
         if st.user.is_logged_in and st.user.email:
             return hashlib.sha256(st.user.email.encode()).hexdigest()[:32]  # so the database holds no email addresses
@@ -2237,11 +2268,18 @@ def markdown_page(file: str):
 
 
 st.set_page_config(page_title="Getleanpeek", page_icon="⏱️", layout="wide")
+if HOSTED:
+    finish_steam_login()
 if current_user() is None:
     st.title("Getleanpeek")
-    if login_available():
+    if steam_available() or login_available():
         st.write("Your CS2 decisions, graded. Sign in to upload a demo and see your report.")
-        if st.button("Sign in with Google", type="primary"):
+        if st.session_state.pop("steam_failed", False):
+            st.error("Steam sign-in didn't go through. Please try again.")
+        if steam_available():
+            st.link_button("Sign in through Steam", steamlogin.login_url(public_url()), type="primary")
+            st.caption("Opens Steam in a new tab. Steam only tells Getleanpeek your Steam ID: no email, no password.")
+        if login_available() and st.button("Sign in with Google", type="secondary" if steam_available() else "primary"):
             st.login("google")
     else:
         st.info("Sign-in is required, and isn't available yet.")
@@ -2249,7 +2287,11 @@ if current_user() is None:
     st.stop()
 track("session_start", once=True)
 if HOSTED:
+    if st.session_state.get("steam_id") and saved_setting("me") is None:
+        save_setting("me", st.session_state["steam_id"])  # a Steam sign-in already says which player you are
     if st.sidebar.button("Sign out"):
+        if st.session_state.pop("steam_id", None):
+            st.rerun()
         st.logout()
 navigation = st.navigation(
     [

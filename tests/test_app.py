@@ -54,4 +54,18 @@ def test_hosted_mode_offers_sign_in_once_login_is_set_up(monkeypatch):
     app.run()
     assert not app.exception
     assert [b.label for b in app.button] == ["Sign in with Google"]
+    assert [b.label for b in app.get("link_button")] == ["Sign in through Steam"]
     assert not app.selectbox and not app.header and not app.metric
+
+
+def test_a_forged_steam_reply_signs_nobody_in(monkeypatch):
+    monkeypatch.setenv("HALFTIME_HOSTED", "1")
+    monkeypatch.setenv("HALFTIME_PUBLIC_URL", "https://getleanpeek.example/")
+    app = AppTest.from_file("../app.py", default_timeout=120)
+    app.query_params["openid.mode"] = "id_res"
+    app.query_params["openid.claimed_id"] = "https://steamcommunity.com/openid/id/76561198000000001"
+    app.query_params["openid.return_to"] = "https://evil.example/"
+    app.run()
+    assert not app.exception
+    assert "didn't go through" in app.error[0].value
+    assert not app.selectbox and not app.metric
