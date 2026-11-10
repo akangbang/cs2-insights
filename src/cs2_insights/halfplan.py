@@ -66,7 +66,7 @@ def _halves(rounds: pd.DataFrame) -> tuple[list[int], list[int]]:
     return [r for r in regulation["round"] if r < pivot], [r for r in regulation["round"] if r >= pivot]
 
 
-def _events(deaths: pd.DataFrame, chances: pd.DataFrame, calls: pd.DataFrame, flashes: pd.DataFrame) -> pd.DataFrame:
+def miss_events(deaths: pd.DataFrame, chances: pd.DataFrame, calls: pd.DataFrame, flashes: pd.DataFrame) -> pd.DataFrame:
     """One row per miss: round, kind and how much it counts."""
     rows = []
     if len(deaths):
@@ -103,7 +103,7 @@ def build_plan(rounds: pd.DataFrame, deaths: pd.DataFrame, chances: pd.DataFrame
     if not first:
         return None
     side = rounds.sort_values("round")["side"].iloc[0]
-    events = _events(deaths, chances, calls, flashes)
+    events = miss_events(deaths, chances, calls, flashes)
     early, late = events[events["round"].isin(first)], events[events["round"].isin(second)]
     totals = early.groupby("key").agg(count=("key", "size"), weight=("weight", "sum")).reset_index().sort_values(["weight", "count"], ascending=False)
     repeated = totals[totals["count"] >= 2]

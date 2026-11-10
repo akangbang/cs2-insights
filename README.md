@@ -161,6 +161,8 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/recap.py` | Your latest matches against the ones before |
 | `src/cs2_insights/categories.py` | Premier, Competitive and FACEIT match categories |
 | `src/cs2_insights/duo.py` | How two teammates back each other up |
+| `src/cs2_insights/breakdown.py` | Where your misses happen: CT or T, and on which maps |
+| `src/cs2_insights/roundchain.py` | Win chance through a round, and the moment it swung |
 | `src/cs2_insights/halfplan.py` | What to change after the first half, and whether it changed |
 | `src/cs2_insights/proof.py` | Whether a focus habit changed since it was picked, and the shareable card |
 | `src/cs2_insights/replay.py` | What each option in a decision was worth |
