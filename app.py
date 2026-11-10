@@ -37,6 +37,7 @@ from cs2_insights.progress import FOCUS, RECENT_MATCHES, history, match_numbers
 from cs2_insights.rates import equipment_slope
 from cs2_insights.proof import IMPROVED, MIN_AFTER, NO_BASELINE, WAITING, WORSE, build_proof, change_words, latest_match, proof_card
 from cs2_insights.recap import build_recap
+from cs2_insights.roundchain import PLANT, round_chain, start_chance, turning_point
 from cs2_insights.replay import ROUNDS, WIN, Replay, call_replay, clutch_replay, death_replay
 from cs2_insights.utility import FLASH_COST_TEAMMATE, FLASH_FIXES, FLASH_TRADE_OFF, FLASH_WASTED, UNUSED_WORTH_MENTION
 from cs2_insights.report import (
@@ -405,6 +406,46 @@ def render_timeline(report: Report, mode: str) -> None:
         render_round(report, int(picked))
 
 
+CHAIN_KINDS = ["Your team lost a player", "Enemy lost a player", "Bomb planted"]
+
+
+def chain_chart(chain: pd.DataFrame, start: float, names: dict, mode: str) -> alt.Chart:
+    """Your team's win chance through the round, one step per death or plant."""
+    palette = COLORS[mode]
+    points = chain.assign(
+        what=[CHAIN_KINDS[2] if k == PLANT else CHAIN_KINDS[0] if m else CHAIN_KINDS[1] for k, m in zip(chain["kind"], chain["mine"])],
+        who=[("the bomb" if k == PLANT else names.get(v, "a player")) for k, v in zip(chain["kind"], chain["victim"])],
+        time=chain["seconds"].map(clock),
+    )
+    line = pd.concat([pd.DataFrame([{"seconds": 0.0, "after": start}]), points[["seconds", "after"]]], ignore_index=True)
+    x = alt.X("seconds:Q", title="Seconds into the round", scale=alt.Scale(domainMin=0))
+    y = alt.Y("after:Q", title="Your team's chance to win", scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%", tickCount=5))
+    steps = alt.Chart(line).mark_line(interpolate="step-after", strokeWidth=2, color=palette["neutral"]).encode(x=x, y=y)
+    dots = alt.Chart(points).mark_point(filled=True, size=90, stroke=palette["surface"], strokeWidth=1.5, opacity=1).encode(
+        x=x, y=y,
+        color=alt.Color("what:N", title=None, scale=alt.Scale(domain=CHAIN_KINDS, range=[palette["Your team"], palette["Opponent"], palette["neutral"]]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        shape=alt.Shape("what:N", scale=alt.Scale(domain=CHAIN_KINDS, range=["circle", "circle", "diamond"]), legend=None),
+        tooltip=[alt.Tooltip("time:N", title="Time"), alt.Tooltip("what:N", title="What"), alt.Tooltip("who:N", title="Who"),
+                 alt.Tooltip("before:Q", title="Before", format=".0%"), alt.Tooltip("after:Q", title="After", format=".0%")],
+    )
+    return alt.layer(steps, dots).properties(height=300)
+
+
+def render_chain(report: Report, number: int, round_row: pd.Series) -> None:
+    chain = round_chain(report.all_deaths, number, report.team, round_row["side"], report.fight_model)
+    if chain.empty:
+        return
+    st.altair_chart(chain_chart(chain, start_chance(chain), report.names, theme_mode()), width="stretch")
+    swing = turning_point(chain, bool(round_row["won"]))
+    if swing is not None:
+        what = "the bomb was planted" if swing["kind"] == PLANT else (
+            f"{report.names.get(swing['victim'], 'a player')} died at {place_label(swing['place'])}")
+        st.markdown(f"**This round was {'won' if round_row['won'] else 'lost'} here:** {clock(swing['seconds'])}, {what}. "
+                    f"Your team's chance went from **{swing['before']:.0%} → {swing['after']:.0%}**.")
+    st.caption("Win chance comes from players alive and the bomb, so it shows where the round swung, not everything that caused it.")
+
+
 def render_round(report: Report, number: int) -> None:
     """Everything that happened to you in one round, in one card."""
     r = report.rounds.set_index("round").loc[number]
@@ -412,6 +453,7 @@ def render_round(report: Report, number: int) -> None:
         st.markdown(f"**Round {number} · {'✅ Won' if r['won'] else '❌ Lost'}** · score before {r['score']} · {r['side']} · "
                     f"your {BUY_LABELS[r['your_buy']].lower()} (\\${r['your_equip']:,}) vs their {BUY_LABELS[r['their_buy']].lower()} (\\${r['their_equip']:,})")
         # (Two "$" in one markdown line would render as a maths formula, hence the escapes.)
+        render_chain(report, number, r)
         calls = report.calls[report.calls["round"] == number] if len(report.calls) else report.calls
         for _, call in calls.iterrows():
             st.markdown(f"💰 **Buy call: {call['grade']}.** {call_detail(call)}")
