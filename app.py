@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from cs2_insights import analytics, calibration, db, privacy, spacing
 from cs2_insights.breakdown import HALF, MIN_MAP_MATCHES, Misses, best_and_worst, collect, map_breakdown, side_breakdown, side_notes
+from cs2_insights.cards import match_card
 from cs2_insights.categories import ALL, LABELS, category_counts, category_of, filter_matches
 from cs2_insights.demo import ParsedDemo, match_id_from_path, parse_demo
 from cs2_insights import fights
@@ -297,6 +298,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     if current:
         render_focus_banner(current, past, current["match_id"])
     render_scorecards(report, past, current["match_id"] if current else None)
+    render_share(report)
     render_timeline(report, mode)
 
     st.subheader("Top moments")
@@ -475,6 +477,26 @@ def render_round(report: Report, number: int) -> None:
 
 def theme_mode() -> str:
     return "dark" if getattr(st.context.theme, "type", "light") == "dark" else "light"
+
+
+def render_share(report: Report) -> None:
+    """An image of this match to post, built from the same numbers as the scorecards. No player names."""
+    s = report.summary
+    with st.expander("📤 Share this match"):
+        fought = s.get("fights_parsed")
+        stats = [
+            ("Avoidable deaths", f"{s['avoidable_deaths']} of {s['deaths']}" if fought else "–"),
+            ("Coverage", (s.get("coverage") or {}).get("grade") or "–"),
+            ("Buy calls right", f"{s['calls_right']} of {s['calls']}" if s["calls"] else "–"),
+            ("Deaths traded", f"{s['traded_deaths']} of {s['deaths']}" if fought else "–"),
+        ]
+        bad = next((m.title for m in report.moments if m.kind == "bad"), None)
+        good = next((m.title for m in report.moments if m.kind == "good"), None)
+        card = match_card(map_label(s["map"]), s["result"], f"{s['your_score']}–{s['their_score']}", stats, bad, good)
+        st.image(card, width=560)
+        st.download_button("Save this card", card, file_name="getleanpeek-match.png", mime="image/png", key=f"share_{report.match_id}_{report.steamid}",
+                           on_click=lambda: track("match_card_saved", steamid=report.steamid, match_id=report.match_id))
+        st.caption("Shows the map, the score and your numbers. It never shows player names.")
 
 
 def render_scorecards(report: Report, past: pd.DataFrame, match_id: str | None) -> None:

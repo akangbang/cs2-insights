@@ -33,6 +33,10 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Utility tab](docs/screenshots/utility.png)
 
+**Share this match.** One image per match with no player names, made to post.
+
+![Match card](docs/screenshots/match-card.png)
+
 **Second-half plan.** Three things to change, written only from the first half, then whether you did them.
 
 ![Second-half plan](docs/screenshots/second-half.png)
@@ -73,6 +77,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Clutches & openings:** a fight-or-save verdict for every 1vX, and every opening duel you were in.
   - **Buy calls:** every force-or-save decision graded "Good call", "Close call", "Should have forced" or "Should have saved", with the rounds each wrong call cost.
   - **Economy:** both teams' equipment and buys, round by round.
+- **Share this match.** An image of the map, score, four headline numbers, the thing to fix and the best moment, ready to post. It never shows player names.
 - **Replay the decision.** Avoidable deaths, wrong buy calls and fight-or-save clutches show what each option was worth, as a chart with one bar per choice and the one you made in blue. For a death, it compares what happened with the same death with a teammate close enough to trade (at the rate those get traded across the pool) and with staying alive, labelled a best case because a demo can't show you'd have survived. When a lost-cause death's numbers favour fighting on, the replay says so and the "hide next time" advice is dropped.
 - **Disagree button.** Verdict cards let a player flag a call that looks wrong and say why (a wall or smoke, it was the right play, the facts look wrong). Answers feed `analytics.v_verdict_feedback`, which shows the operator which verdicts get rejected most.
 - **Duo report.** For any teammate you've shared matches with: round win rate together against without them, trades each way against what players in those spots usually get, how far apart you play, flashes on each other, and kills set up by a flash. It ends with what to work on together and what to keep doing. Follows the match-type filter.
@@ -116,7 +121,7 @@ Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `
 | `fact_player_match` | player per match: deaths, avoidable deaths, coverage, utility, clutches, opening duels, buy calls |
 | `fact_death`, `fact_clutch`, `fact_opening`, `fact_buy_call` | death; clutch; opening duel; force-or-save decision |
 
-**Business metrics.** The app records product usage in `app_events` (report viewed, demo uploaded, replays added, habits viewed, round opened, "This is me" saved, focus set, checklist saved, progress card saved, duo report viewed; no names, IPs or device details; disclosed in the privacy policy). Views on top: `v_usage_daily`, `v_funnel` (opened app → viewed a report → opened habits → saved themselves), `v_feature_use` and `v_retention_weekly`. Turn tracking off with `HALFTIME_NO_TRACKING=1`.
+**Business metrics.** The app records product usage in `app_events` (report viewed, demo uploaded, replays added, habits viewed, round opened, "This is me" saved, focus set, checklist saved, progress card saved, duo report viewed, match card saved; no names, IPs or device details; disclosed in the privacy policy). Views on top: `v_usage_daily`, `v_funnel` (opened app → viewed a report → opened habits → saved themselves), `v_feature_use` and `v_retention_weekly`. Turn tracking off with `HALFTIME_NO_TRACKING=1`.
 
 **Who can see this.** Dashboards are for the operator, never users: no app page reads these tables, and Power BI should log in through the `analytics_reader` role, which can read the `analytics` schema and nothing else (no raw events, no Steam auth codes). When hosted, the tables are rebuilt with the analytics command rather than during a user's request, and usage is counted per account using a scrambled ID.
 
