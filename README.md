@@ -182,6 +182,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/habits.py` | Patterns across matches |
 | `src/cs2_insights/privacy.py` | Deleting an account's data and forgetting a player |
 | `src/cs2_insights/calibration.py` | Tests the models on matches they haven't seen |
+| `src/cs2_insights/steamlogin.py` | Sign in through Steam, checked with Steam |
 | `src/cs2_insights/spacing.py` | Spacing (nearest teammate when you die) and crossfire measurements |
 | `src/cs2_insights/confidence.py` | "How sure are we?" labels on verdicts |
 | `src/cs2_insights/rates.py` | Pooled win rates and the equipment win curve |
