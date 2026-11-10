@@ -167,6 +167,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/demo.py` | Demo parsing: rounds, teams, players, deaths, positions, grenades and flashes |
 | `src/cs2_insights/fights.py` | Death verdicts, trade chance, coverage grade, clutches and opening duels |
 | `src/cs2_insights/recap.py` | Your latest matches against the ones before |
+| `src/cs2_insights/cards.py` | Shareable match card image |
 | `src/cs2_insights/categories.py` | Premier, Competitive and FACEIT match categories |
 | `src/cs2_insights/duo.py` | How two teammates back each other up |
 | `src/cs2_insights/breakdown.py` | Where your misses happen: CT or T, and on which maps |
