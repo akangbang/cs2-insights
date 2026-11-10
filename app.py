@@ -21,6 +21,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from cs2_insights import analytics, calibration, db, privacy, spacing
+from cs2_insights.breakdown import HALF, MIN_MAP_MATCHES, Misses, best_and_worst, collect, map_breakdown, side_breakdown, side_notes
 from cs2_insights.categories import ALL, LABELS, category_counts, category_of, filter_matches
 from cs2_insights.demo import ParsedDemo, match_id_from_path, parse_demo
 from cs2_insights import fights
@@ -1612,7 +1613,12 @@ def habits_page() -> None:
     names = {}
     for m in matches:
         names.update(m.player_rounds.drop_duplicates("steamid", keep="last").set_index("steamid")["name"].to_dict())
-    tabs = st.tabs(["📉 Avoidable deaths by match", "🤝 Coverage across matches", "🚪 Opening duels by callout", "💰 Every buy call"])
+    tabs = st.tabs(["📉 Avoidable deaths by match", "🤝 Coverage across matches", "🗺️ Maps", "🔀 CT vs T", "🚪 Opening duels by callout", "💰 Every buy call"])
+    misses = collect(matches, labels[picked], fight_model, slope)
+    with tabs[2]:
+        render_maps(misses, mode)
+    with tabs[3]:
+        render_sides(misses, mode)
     with tabs[0]:
         if habits.fight_matches:
             st.altair_chart(avoidable_trend_chart(habits.deaths, matches, mode), width="stretch")
@@ -1626,11 +1632,89 @@ def habits_page() -> None:
                        "where trades happen: close to the killer and aiming at him.")
         else:
             st.write("No teammate died near you in these matches.")
-    with tabs[2]:
+    with tabs[4]:
         render_habit_openings(matches, labels[picked], mode)
-    with tabs[3]:
+    with tabs[5]:
         if len(habits.calls):
             render_calls(habits.calls.sort_values("cost", ascending=False), with_match=True)
+
+
+SIDE_ORDER = ["CT", "T"]
+
+
+def sides_chart(table: pd.DataFrame, mode: str) -> alt.Chart:
+    palette = COLORS[mode]
+    labels = list(dict.fromkeys(table["label"]))
+    y = alt.Y("label:N", title=None, sort=labels, axis=alt.Axis(labelLimit=240, ticks=False, domain=False))
+    x = alt.X("per_half:Q", title="Times per half (12 rounds)", scale=alt.Scale(domainMin=0))
+    offset = alt.YOffset("side:N", sort=SIDE_ORDER)
+    # CT blue and T orange, as in the game.
+    bars = alt.Chart(table).mark_bar(cornerRadiusEnd=4).encode(
+        y=y, x=x, yOffset=offset,
+        color=alt.Color("side:N", title=None, sort=SIDE_ORDER, scale=alt.Scale(domain=SIDE_ORDER, range=[palette["Your team"], palette["Opponent"]]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        tooltip=[alt.Tooltip("label:N", title="Habit"), alt.Tooltip("side:N", title="Side"), alt.Tooltip("count:Q", title="Times"),
+                 alt.Tooltip("per_half:Q", title="Per half", format=".1f")],
+    ).properties(height=alt.Step(18))
+    text = alt.Chart(table).mark_text(align="left", dx=5, fontSize=11, color=palette["text"]).encode(
+        y=y, x=x, yOffset=offset, text=alt.Text("per_half:Q", format=".1f")).properties(height=alt.Step(18))
+    return alt.layer(bars, text)
+
+
+def render_sides(misses: Misses, mode: str) -> None:
+    table = side_breakdown(misses)
+    if table.empty:
+        st.write("No misses to compare yet.")
+        return
+    notes = side_notes(table)
+    for note in notes:
+        st.markdown(f"⚠️ {note}")
+    if not notes:
+        st.markdown("✅ None of your misses is clearly worse on one side.")
+    st.altair_chart(sides_chart(table, mode), width="stretch")
+    played = misses.rounds.groupby("side").size()
+    st.caption(f"Each habit per {HALF} rounds on that side, so the side you played more doesn't look worse. Rounds played: "
+               f"CT {int(played.get('CT', 0))}, T {int(played.get('T', 0))}. A side is only called out with at least 3 misses there "
+               "and a clear gap.")
+
+
+def maps_chart(table: pd.DataFrame, mode: str) -> alt.Chart:
+    palette = COLORS[mode]
+    data = table.assign(name=table["map"].map(map_label), enough=table["matches"] >= MIN_MAP_MATCHES,
+                        label=[f"won {w:.0%} · {n} match{'es' if n != 1 else ''}" for w, n in zip(table["win_rate"], table["matches"])])
+    order = data.sort_values("avoidable_per_match")["name"].tolist()
+    y = alt.Y("name:N", title=None, sort=order, axis=alt.Axis(ticks=False, domain=False))
+    x = alt.X("avoidable_per_match:Q", title="Avoidable deaths per match", scale=alt.Scale(domainMin=0))
+    bars = alt.Chart(data).mark_bar(cornerRadiusEnd=4, color=palette["Your team"]).encode(
+        y=y, x=x, opacity=alt.condition("datum.enough", alt.value(1), alt.value(0.45)),
+        tooltip=[alt.Tooltip("name:N", title="Map"), alt.Tooltip("matches:Q", title="Matches"), alt.Tooltip("win_rate:Q", title="Won", format=".0%"),
+                 alt.Tooltip("avoidable_per_match:Q", title="Avoidable deaths per match", format=".1f"), alt.Tooltip("top_label:N", title="Most common miss")],
+    ).properties(height=alt.Step(30))
+    text = alt.Chart(data).mark_text(align="left", dx=5, fontSize=11, color=palette["text"]).encode(y=y, x=x, text="label:N").properties(height=alt.Step(30))
+    return alt.layer(bars, text)
+
+
+def render_maps(misses: Misses, mode: str) -> None:
+    table = map_breakdown(misses)
+    if table.empty:
+        st.write("No matches to compare yet.")
+        return
+    best, worst = best_and_worst(table)
+    if best is not None:
+        left, right = st.columns(2)
+        with left.container(border=True):
+            st.markdown(f"✅ **Best map: {map_label(best['map'])}**  \n{best['avoidable_per_match']:.1f} avoidable deaths per match, "
+                        f"won {best['win_rate']:.0%} of {int(best['matches'])}.")
+        with right.container(border=True):
+            st.markdown(f"⚠️ **Toughest map: {map_label(worst['map'])}**  \n{worst['avoidable_per_match']:.1f} avoidable deaths per match. "
+                        f"Most common miss there: **{(worst['top_label'] or 'none').lower()}** ({worst['top_per_match']:.1f} per match).")
+            if worst["tip"]:
+                st.markdown(f"**Next time on {map_label(worst['map'])}:** {worst['tip']}")
+    else:
+        st.caption(f"Play at least {MIN_MAP_MATCHES} matches on two different maps to see your best and toughest map.")
+    st.altair_chart(maps_chart(table, mode), width="stretch")
+    st.caption(f"Fewest avoidable deaths at the top. Maps with fewer than {MIN_MAP_MATCHES} matches are lighter: too few to compare. "
+               "Hover a bar for the most common miss on that map.")
 
 
 def render_checklist(habits) -> None:

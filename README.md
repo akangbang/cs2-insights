@@ -53,6 +53,12 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Accuracy page](docs/screenshots/accuracy.png)
 
+**Maps and sides.** Where your mistakes happen: avoidable deaths on each map, and every kind of miss on CT against T.
+
+![Maps tab](docs/screenshots/maps.png)
+
+![CT vs T tab](docs/screenshots/sides.png)
+
 **Opening duels by callout.** Where you take the first fight of the round on each map, and how often you win it.
 
 ![Opening duels by callout](docs/screenshots/openings.png)
@@ -80,6 +86,8 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Weekly focus:** pick one habit (re-peeks, pushing alone, dying far from teammates, team flashes, coverage, ...) and see it per match against your average, with a reminder on every match report.
   - **Habit proof:** once you've played 3 matches since picking a focus, it compares them with up to 5 from before and says whether the habit improved, slipped or stayed within your normal swing. A real improvement gets a shareable image with the numbers and no player name.
   - **Trend charts:** avoidable deaths per match, coverage across matches, and opening duels by callout per map.
+  - **Maps:** avoidable deaths per match and win rate on each map, your best and toughest map (once you have two matches on two maps), and the most common miss on the toughest one with what to do about it.
+  - **CT vs T:** every kind of miss per 12 rounds on each side, with a note when one side is clearly worse.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
 - **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.
 - **Your data.** Forget your player (your Steam ID is replaced by a random one and your name removed in every stored match) or delete your account's settings, usage history and disagreements. Both need a typed confirmation.
