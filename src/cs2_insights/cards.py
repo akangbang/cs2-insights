@@ -8,15 +8,22 @@ from cs2_insights.proof import CARD_ACCENT, CARD_BACKGROUND, CARD_MUTED, CARD_SI
 
 TILE_FILL = "#161b22"
 LEFT = 72
+# The built-in font has no en dash, ellipsis or arrow, so those would show as empty boxes.
+PLAIN = str.maketrans({"–": "-", "—": "-", "…": "...", "→": "->"})
+
+
+def _plain(text: str) -> str:
+    return text.translate(PLAIN)
 
 
 def _fit(draw: ImageDraw.ImageDraw, text: str, font, width: float) -> str:
     """Shorten `text` with an ellipsis until it fits in `width` pixels."""
+    text = _plain(text)
     if draw.textlength(text, font=font) <= width:
         return text
-    while text and draw.textlength(text + "…", font=font) > width:
+    while text and draw.textlength(text + "...", font=font) > width:
         text = text[:-1]
-    return text.rstrip() + "…"
+    return text.rstrip() + "..."
 
 
 def match_card(map_name: str, result: str, score: str, stats: list[tuple[str, str]], fix: str | None, best: str | None) -> bytes:

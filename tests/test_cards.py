@@ -2,7 +2,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageFont
 
-from cs2_insights.cards import _fit, match_card
+from cs2_insights.cards import _fit, _plain, match_card
 from cs2_insights.proof import CARD_SIZE
 
 STATS = [("Avoidable deaths", "9 of 23"), ("Coverage", "F"), ("Buy calls right", "4 of 7"), ("Deaths traded", "0 of 23")]
@@ -22,5 +22,9 @@ def test_long_text_is_shortened_to_fit():
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     font = ImageFont.load_default(30)
     short = _fit(draw, "word " * 100, font, 400)
-    assert short.endswith("…") and draw.textlength(short, font=font) <= 400
+    assert short.endswith("...") and draw.textlength(short, font=font) <= 400
     assert _fit(draw, "fits", font, 400) == "fits"
+
+
+def test_characters_the_font_lacks_are_swapped_for_plain_ones():
+    assert _plain("12–16 · Dust2 → done…") == "12-16 · Dust2 -> done..."
