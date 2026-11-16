@@ -74,7 +74,7 @@ def test_every_death_gets_the_right_label():
     labels = dict(zip(zip(judged["round"], judged["victim"]), judged["label"]))
     assert labels[(1, "a1")] == fights.TRADED
     assert labels[(2, "a1")] == fights.REPEEK
-    assert labels[(3, "a1")] == fights.SHOULD_SAVE
+    assert labels[(3, "a1")] == fights.DUEL  # nearly lost, but these rounds have no money to value the gun with
     assert labels[(4, "a1")] == fights.ALONE
     assert labels[(5, "a1")] == fights.NOT_TRADED
     assert labels[(6, "a1")] == fights.DUEL
@@ -192,9 +192,14 @@ def test_saving_on_the_last_round_of_a_half_is_worth_nothing():
 def test_a_lost_cause_death_values_the_gear_like_a_clutch_does():
     deaths, players, rounds = _clutch_round(final_victim="a5", next_money=2_500)
     clutch = clutches(deaths, players, rounds, MODEL).iloc[0]
-    judged = pd.DataFrame({"round": [clutch["round"]] * 2, "victim_team": [clutch["team"]] * 2, "side": [clutch["side"]] * 2,
-                           "victim_equip": [clutch["gear"]] * 2, "label": [fights.SHOULD_SAVE, fights.DUEL]})
-    out = fights.with_gear_value(judged, rounds)
-    assert out.at[0, "save_value"] == pytest.approx(clutch["save_value"], abs=0.001)
-    assert out.at[0, "save_rounds"] == clutch["save_rounds"]
-    assert out.at[1, "save_value"] == 0  # only lost-cause deaths are valued
+    judged = judge_deaths(deaths, pd.DataFrame(columns=CHANCE_COLUMNS), rounds, MODEL).set_index("victim")
+    assert judged.at["a5", "save_value"] == pytest.approx(clutch["save_value"], abs=0.001)
+    assert judged.at["a5", "save_rounds"] == clutch["save_rounds"]
+    assert judged.at["a5", "label"] == fights.SHOULD_SAVE  # 1v5: hiding the rifle was worth more
+    assert judged.at["a1", "save_value"] == 0  # only lost-cause deaths are valued
+
+
+def test_a_lost_cause_is_not_avoidable_when_the_gun_is_worth_nothing_later():
+    deaths, _, rounds = _clutch_round(final_victim="a5", rounds=1)  # last round of the half: money resets
+    judged = judge_deaths(deaths, pd.DataFrame(columns=CHANCE_COLUMNS), rounds, MODEL).set_index("victim")
+    assert judged.at["a5", "lost_cause"] and judged.at["a5", "label"] != fights.SHOULD_SAVE

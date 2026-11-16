@@ -50,7 +50,7 @@ DEATH_HABITS = {
     fights.SHOULD_SAVE: (
         "You die with your gun in rounds that are already lost",
         "{n} times in {m} matches your team was under {lost:.0%} to win and you died with $3,000+ of gear "
-        "(${gear:,} in total). Hide and save it: next round starts from that money.",
+        "(${gear:,} in total), when hiding was worth more than fighting on. Save it: next round starts from that money.",
     ),
 }
 

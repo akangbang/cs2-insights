@@ -6,7 +6,7 @@ labelled a best case. The measured option next to it is the same death with a te
 to trade, at the rate deaths like that get traded across the pool.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import pandas as pd
 
@@ -33,7 +33,6 @@ class Replay:
     options: tuple[Option, ...]
     takeaway: str
     note: str
-    disputes_verdict: bool = False  # the numbers lean against the verdict on the card
 
 
 def _compare(options: tuple[Option, ...], close: float, span: str) -> str:
@@ -87,13 +86,9 @@ def death_replay(death: pd.Series, model: FightModel, close_trade_rate: float) -
     if label == fights.SHOULD_SAVE:
         if not death["save_rounds"]:
             return None
-        replay = _fight_or_save("Keep fighting or keep your gun?", "Keep fighting", "Hide and keep the gun", float(death["win_before"]), happened,
-                                float(death["save_value"]), True)
-        fight, hide = replay.options
-        if fight.value - hide.value < fights.CLUTCH_MARGIN:
-            return replay
-        return replace(replay, disputes_verdict=True,
-                       takeaway=replay.takeaway + " \"Lost round\" is a rule of thumb, and here the numbers lean the other way: your gear wasn't worth much in later buys.")
+        # Only labelled when hiding was worth more (fights.judge_deaths), so the chart always backs the advice.
+        return _fight_or_save("Keep fighting or keep your gun?", "Keep fighting", "Hide and keep the gun", float(death["win_before"]), happened,
+                              float(death["save_value"]), True)
     if label not in (fights.REPEEK, fights.ALONE):
         return None
     alive = float(death["win_before"])

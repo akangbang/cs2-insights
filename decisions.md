@@ -102,7 +102,7 @@ Revisit if: Match dates become available (Steam match history, or FACEIT's API),
 ## 2026-11-08 — Replays show a best case for deaths; lost-cause verdict left as is
 Context: Replaying a death needs a counterfactual, but a demo can't show that a player would have survived by playing differently. Measuring the replay on stored matches also showed that "Died with gear in a lost round" is sometimes wrong by its own numbers: of 120 such deaths that could be valued, hiding was better in 73, 21 were too close to call, and fighting on was better in 26.
 Choice + why: Deaths show what happened, the same death with a teammate close enough to trade (at the pool's measured trade rate), and staying alive, labelled a best case. Where a lost-cause death's numbers favour fighting, the replay says so and the card drops its "hide next time" advice. The verdict itself is unchanged, because changing it would change avoidable-death counts and habits, which is a product decision.
-Revisit if: The player decides lost-cause deaths should only count as avoidable when hiding is actually better.
+Revisit if: The player decides lost-cause deaths should only count as avoidable when hiding is actually better. (Done 2026-11-16, see below.)
 
 ## 2026-11-09 — Rename Halftime to LeanPeek
 Context: halftime.gg costs about $50,000. The user wanted a learning-flavoured name containing "lean" and chose getleanpeek.com. leanpeek.com is taken; leanpeek.gg and getleanpeek.com were unregistered on 2026-11-09. Web searches found no product or trademark called LeanPeek. The closest record is LEANPEAK (serial 99633070), a pending application for vitamin supplements by Cowboy Nutrition LLC, per third-party trademark sites. Leanify was rejected: registered US software trademark (6824693), and very close to the competitor Leetify.
@@ -128,3 +128,8 @@ Revisit if: Charging money, marketing it as a business, or large demos crash the
 Context: The user wanted Premier, Competitive and FACEIT kept apart.
 Choice + why: comp_rank_type 11 is Premier and 12 is Competitive, checked on 12 real demos. FACEIT is recognised from the server name, which has not been tested on a real FACEIT demo. Win-chance models still pool every category, because splitting them would leave too little data.
 Revisit if: A real FACEIT demo isn't recognised, or the pool grows large enough to fit models per category.
+
+## 2026-11-16 — Lost-cause deaths count only when hiding was better
+Context: The rule "under 15% to win, holding $3,000+ of gear" flagged deaths where the numbers favoured fighting on, for example on the last round of a half when money resets.
+Choice + why: The user chose to count them as avoidable only when hiding was worth more: the team's chance without you plus what the gun is worth in later buys beats your chance to win the round, which also keeps the gun. fights.judge_deaths values the gear for every lost-cause death and labels it SHOULD_SAVE only then, so every page agrees. On the stored matches, 73 of 140 lost-cause deaths stay avoidable.
+Revisit if: The gear-value model changes, or players say real lost causes are being missed.

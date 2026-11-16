@@ -18,7 +18,7 @@ FACING_ANGLE = 35  # degrees between your aim and the killer; trades get rare be
 NEAR_TEAMMATE = 1_600  # a teammate dying farther away than this isn't yours to trade
 REPEEK_SECONDS = 4
 MOVING_SPEED = 100  # units per second: pushing or clearing rather than holding an angle
-LOST_CAUSE = 0.15  # round win chance below which your gun is worth more than the fight
+LOST_CAUSE = 0.15  # round win chance below which saving your gun is worth checking
 GEAR_WORTH_SAVING = 3_000
 MIN_COVERAGE_CHANCES = 3  # teammate deaths near you before a match gets a coverage grade
 
@@ -145,8 +145,14 @@ def _near(chances: pd.DataFrame) -> pd.Series:
     return distance <= NEAR_TEAMMATE
 
 
-def judge_deaths(deaths: pd.DataFrame, chances: pd.DataFrame, team_rounds: pd.DataFrame, model: FightModel) -> pd.DataFrame:
-    """Every death in one match with its cost in round win chance and a label (TRADED, REPEEK, ...)."""
+def judge_deaths(deaths: pd.DataFrame, chances: pd.DataFrame, team_rounds: pd.DataFrame, model: FightModel,
+                 slope: float | None = None) -> pd.DataFrame:
+    """Every death in one match with its cost in round win chance and a label (TRADED, REPEEK, ...).
+
+    A death with gear in a nearly lost round is SHOULD_SAVE only when hiding was worth more than fighting on:
+    the team's chance without you plus what the gun is worth in later buys (`save_value`, in rounds) beats
+    your chance to win the round, which also keeps the gun: q + S > p * (1 + S).
+    """
     if deaths.empty:
         return deaths.assign(label=[], cost=[])
     d = _with_sides(deaths.drop(columns="match_id", errors="ignore"), team_rounds.drop(columns="match_id", errors="ignore"))
@@ -175,13 +181,16 @@ def judge_deaths(deaths: pd.DataFrame, chances: pd.DataFrame, team_rounds: pd.Da
     d["moving"] = d["victim_speed"].fillna(0) >= MOVING_SPEED
     d["opening"] = d["tick"] == d.groupby("round")["tick"].transform("min")
     d["lost_cause"] = (d["win_before"] < LOST_CAUSE) & (d["victim_equip"] >= GEAR_WORTH_SAVING) & ~d["won"].astype(bool)
+    d = _with_gear_value(d, team_rounds.drop(columns="match_id", errors="ignore"), slope)
+    p, q, worth = d["win_before"], d["win_before"] - d["cost"], d["save_value"]
+    d["hide_better"] = d["lost_cause"] & (d["save_rounds"] > 0) & (q + worth > p * (1 + worth))
 
     d["label"] = np.select(
         [
             ~enemy_kill,
             d["traded"],
             d["repeek"],
-            d["lost_cause"],
+            d["hide_better"],
             d["moving"] & (d["mates_in_range"] == 0) & (d["team_alive"] >= 2),
             d["mates_in_range"] > 0,
         ],
@@ -285,17 +294,20 @@ def _gear_value(teams: pd.DataFrame, states: pd.DataFrame, number: int, team: st
     return max(value[True] - value[False], 0.0), 1 + min(LOOKAHEAD, rounds_left)
 
 
-def with_gear_value(judged: pd.DataFrame, team_rounds: pd.DataFrame, slope: float | None = None) -> pd.DataFrame:
-    """Judged deaths plus `save_value` and `save_rounds`: what the gear was worth in deaths judged a lost cause."""
+ECONOMY_COLUMNS = {"bank", "cash_spent", "start_equip_value", "players", "score", "opponent_score"}
+
+
+def _with_gear_value(judged: pd.DataFrame, team_rounds: pd.DataFrame, slope: float | None = None) -> pd.DataFrame:
+    """Deaths plus `save_value` and `save_rounds`: what the gear was worth, for lost-cause deaths. 0 when it can't be valued."""
     from cs2_insights.grade import economy_states
     from cs2_insights.rates import DEFAULT_EQUIPMENT_SLOPE
 
     out = judged.assign(save_value=0.0, save_rounds=0)
-    if judged.empty or not (judged["label"] == SHOULD_SAVE).any():
+    if judged.empty or not judged["lost_cause"].any() or not ECONOMY_COLUMNS <= set(team_rounds.columns):
         return out
     teams = team_rounds.set_index(["round", "team"])
     states = economy_states(team_rounds).set_index(["round", "team"])
-    for index, d in judged[judged["label"] == SHOULD_SAVE].iterrows():
+    for index, d in judged[judged["lost_cause"]].iterrows():
         value, counted = _gear_value(teams, states, int(d["round"]), d["victim_team"], d["side"], float(d["victim_equip"]), False,
                                      slope or DEFAULT_EQUIPMENT_SLOPE)
         out.loc[index, ["save_value", "save_rounds"]] = [round(value, 3), counted]

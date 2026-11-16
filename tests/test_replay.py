@@ -53,14 +53,6 @@ def test_no_replay_for_a_won_clutch():
     assert clutch_replay(_clutch(outcome="Won")) is None
 
 
-def test_a_lost_cause_says_so_when_the_numbers_favour_fighting():
-    death = _death(fights.SHOULD_SAVE, team=3, enemies=4, save_value=0.01, save_rounds=4)
-    replay = death_replay(death, MODEL, 0.3)
-    assert replay.disputes_verdict and "rule of thumb" in replay.takeaway
-    agrees = death_replay(_death(fights.SHOULD_SAVE, team=2, enemies=4, save_value=0.6, save_rounds=4), MODEL, 0.3)
-    assert not agrees.disputes_verdict
-
-
 def test_no_clutch_replay_when_money_is_about_to_reset():
     assert clutch_replay(_clutch(save_rounds=0)) is None
 

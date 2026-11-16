@@ -643,7 +643,7 @@ def death_card(death: pd.Series, report: Report, where: str = "tab") -> None:
                 st.markdown("\n".join(f"- {reason}" for reason in reasons))
             if group != "Traded":
                 st.markdown(f"**Impact:** your team's chance to win the round went from **{before:.0%} → {after:.0%}**.")
-            if death["label"] in DEATH_FIXES and not (replay and replay.disputes_verdict):
+            if death["label"] in DEATH_FIXES:
                 st.markdown(f"**Next time:** {DEATH_FIXES[death['label']]}")
             sure = death_confidence(death)
             if sure:
