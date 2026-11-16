@@ -153,9 +153,10 @@ def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
     if conn is None:
         return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
     try:
-        db.load_parsed(conn, parsed)
-        if HOSTED:
-            db.add_user_match(conn, current_user(), parsed.match.iloc[0]["match_id"])
+        if not guest():  # a guest's match is read in memory and thrown away
+            db.load_parsed(conn, parsed)
+            if HOSTED:
+                db.add_user_match(conn, current_user(), parsed.match.iloc[0]["match_id"])
         match_id = parsed.match.iloc[0]["match_id"]
         pool = db.pool_team_rounds(conn, exclude_match_id=match_id)
         fight_pool = db.pool_fights(conn, exclude_match_id=match_id)
@@ -549,7 +550,7 @@ DISAGREE_REASONS = ["A wall or smoke was in the way", "It was the right play", "
 
 def disagree_button(report: Report, kind: str, verdict: str, round_: int, tick: int, where: str = "tab") -> None:
     """Let the player flag a verdict that looks wrong. `where` keeps widget keys unique when a card appears twice."""
-    if database() is None or not report.match_id:
+    if database() is None or not report.match_id or guest():
         return
     key = f"disagree_{kind}_{where}_{report.match_id}_{report.steamid}_{tick}"
     if st.session_state.get(key):
@@ -1401,12 +1402,38 @@ def current_user() -> str | None:
     return None
 
 
+def guest() -> bool:
+    """A visitor to the hosted site who hasn't signed in: reports work, but nothing is saved."""
+    return HOSTED and current_user() is None
+
+
+def sign_in_box(message: str) -> None:
+    """Why signing in helps, with a button for each way that's set up."""
+    with st.container(border=True):
+        st.markdown(message)
+        if st.session_state.pop("steam_failed", False):
+            st.error("Steam sign-in didn't go through. Please try again.")
+        if not (steam_available() or login_available()):
+            st.caption("Sign-in isn't available yet.")
+            return
+        steam, google, _ = st.columns([1, 1, 2])
+        if steam_available():
+            steam.link_button("Sign in through Steam", steamlogin.login_url(public_url()), type="primary", use_container_width=True)
+        if login_available() and google.button("Sign in with Google", type="secondary" if steam_available() else "primary",
+                                               use_container_width=True):
+            st.login("google")
+        if steam_available():
+            st.caption("Steam opens in a new tab and only tells Getleanpeek your Steam ID: no email, no password.")
+
+
 def setting_key(key: str) -> str:
     user = current_user()
     return key if user == LOCAL_USER else f"{user}:{key}"
 
 
 def saved_setting(key: str) -> str | None:
+    if guest():  # remembered for this visit only
+        return st.session_state.get("guest_settings", {}).get(key)
     conn = database()
     if conn is None:
         return None
@@ -1418,6 +1445,9 @@ def saved_setting(key: str) -> str | None:
 
 
 def save_setting(key: str, value: str) -> None:
+    if guest():
+        st.session_state.setdefault("guest_settings", {})[key] = value
+        return
     conn = database()
     if conn is not None:
         db.set_setting(conn, setting_key(key), value)
@@ -1521,6 +1551,9 @@ def category_picker(matches: list, key: str) -> list:
 def report_page() -> None:
     st.title("Getleanpeek")
     st.write("Your CS2 decisions, graded: your buys, your deaths, and how well you cover your teammates.")
+    if guest():
+        sign_in_box("**No account needed.** Upload a demo for your report. It isn't saved: sign in to keep your matches "
+                    "and see your habits, maps and duo report across them.")
 
     with st.sidebar:
         st.markdown("### Choose a match")
@@ -1612,7 +1645,7 @@ def report_page() -> None:
             st.toast("Saved. Getleanpeek will pick you automatically from now on.")
 
     track("report_viewed", steamid=steamid, match_id=match["match_id"], once=True)
-    past = player_history(steamid, fight_model, slope, history_stamp(), current_user() if HOSTED else None)
+    past = pd.DataFrame() if guest() else player_history(steamid, fight_model, slope, history_stamp(), current_user() if HOSTED else None)
     current = match_numbers(parsed, steamid, fight_model, slope)
     render_report(build_report(parsed, steamid, pool, slope, fight_model), past, current)
 
@@ -1620,6 +1653,9 @@ def report_page() -> None:
 def habits_page() -> None:
     st.title("Your habits")
     st.write("Patterns across all your stored matches: the habits that cost your team the most rounds, and how they change match to match.")
+    if guest():
+        sign_in_box("**Sign in to see your habits.** They come from the matches you've saved, and matches are only saved once you're signed in.")
+        return
     conn = database()
     if conn is None:
         st.warning("Habits need the match database. Start it with `docker compose up -d`, then refresh.")
@@ -2015,6 +2051,9 @@ def render_duo(duo: Duo, name: str, mode: str) -> None:
 def duo_page() -> None:
     st.title("Duo report")
     st.write("How you and a regular teammate back each other up: trades, spacing and flashes across the matches you've shared.")
+    if guest():
+        sign_in_box("**Sign in to see your duo report.** It compares the matches you've saved with a regular teammate.")
+        return
     conn = database()
     if conn is None:
         st.warning("The Duo report needs the match database. Start it with `docker compose up -d`, then refresh.")
@@ -2215,6 +2254,9 @@ def confirmed(key: str) -> bool:
 def data_page() -> None:
     st.title("Your data")
     st.write("See what Getleanpeek keeps about you and delete it. Deletions can't be undone.")
+    if guest():
+        st.info("You're not signed in, so nothing is saved about you: a demo you upload is read for your report and then thrown away.")
+        return
     conn = database()
     if conn is None:
         st.warning("This page needs the match database. Start it with `docker compose up -d`, then refresh.")
@@ -2270,23 +2312,8 @@ def markdown_page(file: str):
 st.set_page_config(page_title="Getleanpeek", page_icon="⏱️", layout="wide")
 if HOSTED:
     finish_steam_login()
-if current_user() is None:
-    st.title("Getleanpeek")
-    if steam_available() or login_available():
-        st.write("Your CS2 decisions, graded. Sign in to upload a demo and see your report.")
-        if st.session_state.pop("steam_failed", False):
-            st.error("Steam sign-in didn't go through. Please try again.")
-        if steam_available():
-            st.link_button("Sign in through Steam", steamlogin.login_url(public_url()), type="primary")
-            st.caption("Opens Steam in a new tab. Steam only tells Getleanpeek your Steam ID: no email, no password.")
-        if login_available() and st.button("Sign in with Google", type="secondary" if steam_available() else "primary"):
-            st.login("google")
-    else:
-        st.info("Sign-in is required, and isn't available yet.")
-    st.caption(DISCLAIMER)
-    st.stop()
 track("session_start", once=True)
-if HOSTED:
+if HOSTED and not guest():
     if st.session_state.get("steam_id") and saved_setting("me") is None:
         save_setting("me", st.session_state["steam_id"])  # a Steam sign-in already says which player you are
     if st.sidebar.button("Sign out"):

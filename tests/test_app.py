@@ -39,12 +39,14 @@ def test_upload_mode_prompts_for_a_file():
     assert "Upload a demo" in app.info[0].value
 
 
-def test_hosted_mode_without_a_login_shows_nothing(monkeypatch):
+def test_hosted_guests_can_upload_without_signing_in(monkeypatch):
     monkeypatch.setenv("HALFTIME_HOSTED", "1")
     app = AppTest.from_file("../app.py", default_timeout=120).run()
     assert not app.exception
-    assert "Sign-in is required" in app.info[0].value
-    assert not app.selectbox and not app.header and not app.metric
+    assert "Upload a demo" in app.info[0].value
+    assert any("isn't saved" in m.value for m in app.markdown)
+    assert not app.button and not app.sidebar.button  # no Sign out, and no sign-in until it's set up
+    assert not app.header and not app.metric
 
 
 def test_hosted_mode_offers_sign_in_once_login_is_set_up(monkeypatch):
@@ -55,6 +57,7 @@ def test_hosted_mode_offers_sign_in_once_login_is_set_up(monkeypatch):
     assert not app.exception
     assert [b.label for b in app.button] == ["Sign in with Google"]
     assert [b.label for b in app.get("link_button")] == ["Sign in through Steam"]
+    assert "Upload a demo" in app.info[0].value  # guests can still use it
     assert not app.selectbox and not app.header and not app.metric
 
 

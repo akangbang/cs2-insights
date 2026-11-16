@@ -49,7 +49,7 @@ Sign in through Steam needs no setup: it sends players back to the site address 
 
 ## 5. Check it
 
-- Without signing in, the site should show only the sign-in button.
+- Without signing in, you can upload a demo and see the report, and Your habits asks you to sign in. A guest's match must not appear in the database.
 - Sign in, upload a demo, and open the report.
 - Sign in with a second account: it must not show the first account's matches.
 

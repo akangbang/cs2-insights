@@ -6,7 +6,7 @@ Getleanpeek analyzes CS2 match demos to grade players' decisions. This page expl
 
 ## What we collect
 
-When you upload a demo or choose one from your CS2 replays folder, Getleanpeek reads it and keeps **match data** from it:
+You can use Getleanpeek without an account. **If you aren't signed in, a demo you upload is read to make your report and then thrown away: nothing from it is stored.** When you're signed in and upload a demo, or choose one from your CS2 replays folder, Getleanpeek reads it and keeps **match data** from it:
 
 - the map, server name, score and how each round ended;
 - for each of the 10 players: their Steam ID, in-game name, team, side, and each round's money, equipment value, armor, helmet and defuse kit;
