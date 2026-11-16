@@ -1534,6 +1534,20 @@ GUIDE_STEPS = [
      "**Your habits** and watch it change match by match."),
 ]
 
+# The "?" next to a guide step's title: where to find the file, for players who upload.
+GUIDE_HELP = {
+    "Get a match": (
+        "**Where CS2 saves downloaded matches**\n\n"
+        r"**Windows:** `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays`" "\n\n"
+        "**Mac:** CS2 doesn't run on Mac directly. If you play through CrossOver, it's in "
+        "`~/Library/Application Support/CrossOver/Bottles/<your bottle>/drive_c/Program Files (x86)/Steam/steamapps/common/"
+        "Counter-Strike Global Offensive/game/csgo/replays`. In Finder, press **Cmd+Shift+G** and paste the path.\n\n"
+        "**Steam installed somewhere else?** In Steam, right-click Counter-Strike 2 → **Manage → Browse local files**, "
+        "then open `game/csgo/replays`.\n\n"
+        "**FACEIT:** the demo goes to your browser's Downloads folder."
+    ),
+}
+
 
 def render_guide() -> None:
     """How to get started: in full until you've saved yourself with "This is me", then tucked away."""
@@ -1541,7 +1555,7 @@ def render_guide() -> None:
         cols = st.columns(len(GUIDE_STEPS))
         for col, (icon, title, text) in zip(cols, GUIDE_STEPS):
             with col.container(border=True):
-                st.markdown(f"### {icon}\n**{title}**")
+                st.markdown(f"### {icon}\n**{title}**", help=GUIDE_HELP.get(title))
                 st.caption(text)
 
     if saved_setting("me"):

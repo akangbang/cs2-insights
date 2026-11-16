@@ -94,7 +94,7 @@ Real output from real matches. Player names are replaced with stand-ins.
   - **Maps:** avoidable deaths per match and win rate on each map, your best and toughest map (once you have two matches on two maps), and the most common miss on the toughest one with what to do about it.
   - **CT vs T:** every kind of miss per 12 rounds on each side, with a note when one side is clearly worse.
 - **Add all replays.** One click loads every demo in your CS2 replays folder.
-- **First-run guide.** Four steps from downloading a match to your first report; it tucks itself away once you've saved yourself with **This is me**.
+- **First-run guide.** Four steps from downloading a match to your first report, with a "?" on the first step showing where CS2 saves downloaded matches on Windows and Mac (CrossOver) and where FACEIT demos go. It tucks itself away once you've saved yourself with **This is me**.
 - **Your data.** Forget your player (your Steam ID is replaced by a random one and your name removed in every stored match) or delete your account's settings, usage history and disagreements. Both need a typed confirmation.
 - Works on phones (checked at iPhone width: no sideways scrolling, cards stack). Privacy and Terms pages; light and dark mode.
 
