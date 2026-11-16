@@ -36,4 +36,4 @@ We may update these terms. If a change is significant we'll say so in the app. C
 
 ## Contact
 
-[contact email]
+Questions about these terms: andrewwkangg@gmail.com
