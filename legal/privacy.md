@@ -32,6 +32,7 @@ The demo file itself is read and then discarded. We don't store or share demo fi
 
 - To produce your match report.
 - To compute **pooled win rates**: how often each kind of buy wins against each other kind across all matches analyzed. Pooled rates are aggregate numbers and never show another player's identity.
+- To improve and develop Getleanpeek, using the demos you add, when you added them and how. The Terms explain the rights you give Getleanpeek's operator over what you upload.
 
 We don't sell your data, use it for advertising, or send you marketing you didn't ask for.
 
