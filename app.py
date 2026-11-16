@@ -97,15 +97,46 @@ def map_label(name: str | None) -> str:
 # ---------- data loading ----------
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False, validate=lambda conn: not conn.closed and not conn.broken)
+def _connection():
+    conn = db.connect(application_name=db.APP_NAME)
+    db.init_schema(conn)
+    return conn
+
+
+# app.py runs top to bottom on every page load, so this resets each time: the connection is checked once per load.
+_database_checked: dict = {}
+
+
 def database():
-    """A shared connection, or None when PostgreSQL isn't running (the app still works)."""
+    """A shared connection, or None when PostgreSQL isn't running (the app still works).
+
+    A hosted database (Neon) suspends when idle and drops open connections, so the shared one is
+    checked once per page load and replaced if it has died. A failed connection isn't cached, so
+    the next page load tries again.
+    """
+    if "conn" in _database_checked:
+        return _database_checked["conn"]
+    conn = None
+    for attempt in range(2):
+        try:
+            conn = _connection()
+            conn.execute("SELECT 1")
+            conn.commit()
+            break
+        except Exception:
+            _connection.clear()
+            conn = None
+    _database_checked["conn"] = conn
+    return conn
+
+
+def rollback(conn) -> None:
+    """Undo a failed query. If the connection itself has died, drop it so the next page load reconnects."""
     try:
-        conn = db.connect()
-        db.init_schema(conn)
-        return conn
+        conn.rollback()
     except Exception:
-        return None
+        _connection.clear()
 
 
 @st.cache_data(show_spinner=False, max_entries=8)  # analyse() shows the progress
@@ -163,7 +194,7 @@ def save_and_pool(parsed: ParsedDemo) -> tuple[pd.DataFrame, float, FightModel]:
         conn.commit()  # end the read transaction so this long-lived connection never holds locks
         return pooled_rates(pool), equipment_slope(pool), fit_fight_model(*fight_pool)
     except Exception:
-        conn.rollback()
+        rollback(conn)
         return pooled_rates(parsed.team_rounds), equipment_slope(parsed.team_rounds), FightModel()
 
 
@@ -182,8 +213,8 @@ def track(event: str, steamid: str | None = None, match_id: str | None = None, d
     session = st.session_state.setdefault("session_id", uuid.uuid4().hex)
     try:
         db.log_event(conn, session, event, steamid, match_id, detail, current_user())
-    except Exception:
-        conn.rollback()  # tracking must never break the app
+    except Exception:  # tracking must never break the app
+        rollback(conn)
 
 
 def stand_in(steamid: str) -> str:
@@ -211,7 +242,7 @@ def add_all_replays(demos: list[Path]) -> int:
         try:
             added += ingest(path, conn).startswith("loaded")
         except Exception:
-            conn.rollback()
+            rollback(conn)
         progress.progress(i / len(demos), text=f"Adding replays… {i}/{len(demos)}")
     progress.empty()
     if added:
@@ -229,7 +260,7 @@ def refresh_analytics() -> None:
         with st.spinner("Updating dashboard data…"):
             analytics.refresh(conn)
     except Exception:
-        conn.rollback()
+        rollback(conn)
 
 
 # ---------- report rendering ----------
@@ -563,7 +594,7 @@ def disagree_button(report: Report, kind: str, verdict: str, round_: int, tick: 
                 try:
                     db.add_feedback(database(), current_user(), report.match_id, int(round_), int(tick), report.steamid, kind, verdict, reason)
                 except Exception:
-                    database().rollback()
+                    rollback(database())
                 st.session_state[key] = True
                 st.rerun()
 
@@ -1074,7 +1105,7 @@ def pool_spacing(stamp: int) -> tuple[dict, tuple | None]:
         deaths, chances, _ = db.pool_fights(conn)
         conn.commit()
     except Exception:
-        conn.rollback()
+        rollback(conn)
         return dict(spacing.DEFAULT_RATES), None
     pool = spacing.death_spacing(deaths, chances) if len(deaths) else pd.DataFrame()
     return (spacing.spacing_rates(pool), spacing.crossfire_finding(pool)) if len(pool) else (dict(spacing.DEFAULT_RATES), None)
@@ -1333,7 +1364,7 @@ def player_history(steamid: str, model: FightModel, slope: float, stamp: int, us
         matches = db.load_matches(conn, steamid=steamid, user_id=user_id)
         conn.commit()
     except Exception:
-        conn.rollback()
+        rollback(conn)
         return pd.DataFrame()
     return history(matches, steamid, model, slope)
 
@@ -1347,7 +1378,7 @@ def history_stamp() -> int:
         conn.commit()
         return hash(stamp)
     except Exception:
-        conn.rollback()
+        rollback(conn)
         return 0
 
 
@@ -1440,7 +1471,7 @@ def saved_setting(key: str) -> str | None:
     try:
         return db.get_setting(conn, setting_key(key))
     except Exception:
-        conn.rollback()
+        rollback(conn)
         return None
 
 
@@ -1531,7 +1562,7 @@ def stored_match_types() -> dict:
     try:
         return db.match_types(conn)
     except Exception:
-        conn.rollback()
+        rollback(conn)
         return {}
 
 
@@ -1670,7 +1701,7 @@ def habits_page() -> None:
         matches = [hide_names(m) for m in db.load_matches(conn, user_id=current_user() if HOSTED else None)]
         conn.commit()
     except Exception:
-        conn.rollback()
+        rollback(conn)
         raise
     if not matches:
         st.info("No matches stored yet. Open a report on the Match report page, or add all your replays from the sidebar.")
@@ -1682,7 +1713,7 @@ def habits_page() -> None:
         slope = equipment_slope(db.pool_team_rounds(conn))
         conn.commit()
     except Exception:
-        conn.rollback()
+        rollback(conn)
         raise
     fight_model = fit_fight_model(pool_deaths, pool_chances, pool_rounds)
     counts = pd.concat([m.player_rounds.drop_duplicates("steamid")[["steamid", "name"]] for m in matches])
@@ -2063,7 +2094,7 @@ def duo_page() -> None:
         pool_deaths, pool_chances, pool_rounds = db.pool_fights(conn)
         conn.commit()
     except Exception:
-        conn.rollback()
+        rollback(conn)
         raise
     matches = [m for m in matches if len(m.deaths)]
     if not matches:
@@ -2272,7 +2303,7 @@ def data_page() -> None:
                                (privacy.REMOVED_NAME,)).fetchall()
         conn.commit()
     except Exception:
-        conn.rollback()
+        rollback(conn)
         players = []
     names = {sid: stand_in(sid) for sid, _ in players} if HIDE_NAMES else dict(players)
     if HOSTED:  # on a shared copy you can only remove yourself

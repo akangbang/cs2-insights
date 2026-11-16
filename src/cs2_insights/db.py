@@ -39,12 +39,16 @@ TRADE_CHANCE_COLUMNS = [
 ]
 
 
-def connect(url: str | None = None) -> psycopg.Connection:
+APP_NAME = "getleanpeek-app"  # how the web app's connections show up in the database's session list
+
+
+def connect(url: str | None = None, application_name: str | None = None) -> psycopg.Connection:
     load_dotenv()
     url = url or os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL isn't set; add it to .env.")
-    return psycopg.connect(url, connect_timeout=10)  # a sleeping hosted database takes a moment to wake
+    extra = {"application_name": application_name} if application_name else {}
+    return psycopg.connect(url, connect_timeout=10, **extra)  # a sleeping hosted database takes a moment to wake
 
 
 def init_schema(conn: psycopg.Connection) -> None:

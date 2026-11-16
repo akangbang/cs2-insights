@@ -72,3 +72,24 @@ def test_a_forged_steam_reply_signs_nobody_in(monkeypatch):
     assert not app.exception
     assert "didn't go through" in app.error[0].value
     assert not app.selectbox and not app.metric
+
+
+def test_the_app_reconnects_after_the_database_drops_its_connection():
+    """A hosted database (Neon) closes idle connections when it suspends; the next page load must still work."""
+    from cs2_insights import db
+
+    try:
+        admin = db.connect()
+    except Exception:
+        pytest.skip("PostgreSQL not running (docker compose up -d)")
+    app = AppTest.from_file("../app.py", default_timeout=120).run()
+    assert not app.exception
+    # Close only the app's connections (other tests' connections survive), like a suspending database would.
+    closed = admin.execute("SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE application_name = %s",
+                           (db.APP_NAME,)).fetchone()[0]
+    assert closed >= 1
+    admin.close()
+    app.run()
+    assert not app.exception
+    assert not any("database isn't running" in w.value for w in app.warning)
+
