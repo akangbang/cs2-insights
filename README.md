@@ -59,6 +59,10 @@ Real output from real matches. Player names are replaced with stand-ins.
 
 ![Accuracy page](docs/screenshots/accuracy.png)
 
+**Could machine learning do better?** The round win-chance model against scikit-learn and XGBoost challengers, scored the same way.
+
+![Model comparison](docs/screenshots/model-comparison.png)
+
 **Maps and sides.** Where your mistakes happen: avoidable deaths on each map, and every kind of miss on CT against T.
 
 ![Maps tab](docs/screenshots/maps.png)
@@ -112,6 +116,8 @@ Stored matches live in PostgreSQL, and every match you open joins the pool the m
 
 **Tested on unseen matches** (12 matches; `python -m cs2_insights.calibration`). Average miss between predicted and actual: 0.6 points for mid-round win chance, 0.3 for trade chance, 7.4 for pre-round win chance from equipment, which has far fewer predictions. The trade figure flatters the model, since most of its predictions sit near 0%; its rare high predictions are less reliable. This checks the odds, not the simulated "what if" behind buy calls.
 
+**Machine-learning challengers** (`python -m cs2_insights.model_compare`, needs `requirements-ml.txt`). The mid-round win chance was tested against scikit-learn logistic regression, scikit-learn gradient boosting and XGBoost, which also see the round clock, side, both teams' equipment and the map, with leave-one-match-out cross-validation on 13 matches (3,808 moments). The richer logistic regression scored best (Brier skill 31% vs 28%) but won only 8 of 13 matches, a gain within the match-to-match noise, so the simple model stays. The tree models overfit and scored worse (24%). The result is saved to `docs/model_comparison.json` and shown on the accuracy page, so the hosted app doesn't need scikit-learn or XGBoost.
+
 **Early beta:** the pool is small, and distances are straight lines (walls aren't modelled yet). Treat verdicts as a guide, not gospel.
 
 ## Dashboards (Power BI)
@@ -130,7 +136,7 @@ Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `
 The tables refresh automatically when matches are added (the ingest command or **Add all replays**), or by hand with `python -m cs2_insights.analytics`.
 
 ## Stack
-Python (demoparser2, pandas, NumPy), PostgreSQL, Streamlit + Altair. Planned: Power BI, Excel, AWS hosting.
+Python (demoparser2, pandas, NumPy, scikit-learn, XGBoost), PostgreSQL, Streamlit + Altair, GitHub Actions CI. Planned: Power BI, Excel, AWS hosting.
 
 ## Setup (Windows, PowerShell)
 ```powershell
@@ -189,6 +195,8 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `src/cs2_insights/habits.py` | Patterns across matches |
 | `src/cs2_insights/privacy.py` | Deleting an account's data and forgetting a player |
 | `src/cs2_insights/calibration.py` | Tests the models on matches they haven't seen |
+| `src/cs2_insights/model_compare.py` | Round win chance: the current model against scikit-learn and XGBoost |
+| `.github/workflows/tests.yml` | Runs the tests on every push |
 | `src/cs2_insights/steamlogin.py` | Sign in through Steam, checked with Steam |
 | `src/cs2_insights/spacing.py` | Spacing (nearest teammate when you die) and crossfire measurements |
 | `src/cs2_insights/confidence.py` | "How sure are we?" labels on verdicts |

@@ -133,3 +133,8 @@ Revisit if: A real FACEIT demo isn't recognised, or the pool grows large enough 
 Context: The rule "under 15% to win, holding $3,000+ of gear" flagged deaths where the numbers favoured fighting on, for example on the last round of a half when money resets.
 Choice + why: The user chose to count them as avoidable only when hiding was worth more: the team's chance without you plus what the gun is worth in later buys beats your chance to win the round, which also keeps the gun. fights.judge_deaths values the gear for every lost-cause death and labels it SHOULD_SAVE only then, so every page agrees. On the stored matches, 73 of 140 lost-cause deaths stay avoidable.
 Revisit if: The gear-value model changes, or players say real lost causes are being missed.
+
+## 2026-11-17 — Keep the simple round win-chance model after an ML comparison
+Context: The user wanted the win model tested against standard machine-learning models.
+Choice + why: model_compare.py scores the current 3-input logistic regression against scikit-learn logistic regression, HistGradientBoosting and XGBoost with 7 more inputs (clock, side, both teams' equipment, map), leave-one-match-out. The richer logistic regression scored best (Brier 0.172 vs 0.180, skill 31% vs 28%) but won 8 of 13 matches, with a mean gain of 0.008 ± 0.007, within the noise. The tree models overfit (skill 24%). The app keeps the simple model, and the accuracy page shows the saved result, so the hosted app doesn't install scikit-learn or XGBoost.
+Revisit if: The gain exceeds twice its standard error on a bigger pool. Rerun `python -m cs2_insights.model_compare`.

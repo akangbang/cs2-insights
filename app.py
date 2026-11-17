@@ -5,6 +5,7 @@ Run with: streamlit run app.py
 
 import dataclasses
 import hashlib
+import json
 import os
 import sys
 import tempfile
@@ -2289,6 +2290,70 @@ def accuracy_page() -> None:
         "- **Honest odds aren't the same as right advice.** These test how often things happen. A verdict like \"should have "
         "forced\" also relies on simulating what would have happened instead, which can't be checked this way."
     )
+    render_model_comparison(mode)
+
+
+MODEL_COMPARISON = ROOT / "docs" / "model_comparison.json"
+
+
+def comparison_chart(models: pd.DataFrame, mode: str) -> alt.Chart:
+    """Skill per model, the current one in grey: one bar each, longer is better."""
+    palette = COLORS[mode]
+    data = models.assign(current=models["model"] == model_compare_current())
+    return alt.Chart(data).mark_bar(cornerRadiusEnd=4, height=22).encode(
+        x=alt.X("skill:Q", title="Skill: how much better than always guessing the average", axis=alt.Axis(format=".0%", tickCount=5),
+                scale=alt.Scale(domainMin=0)),
+        y=alt.Y("model:N", sort=None, title=None),
+        color=alt.condition("datum.current", alt.value(palette["neutral"]), alt.value(palette["Your team"])),
+        tooltip=[alt.Tooltip("model:N", title="Model"), alt.Tooltip("skill:Q", title="Skill", format=".1%"),
+                 alt.Tooltip("brier:Q", title="Brier score", format=".4f"), alt.Tooltip("auc:Q", title="AUC", format=".3f")],
+    ).properties(height=40 * len(data) + 30)
+
+
+def model_compare_current() -> str:
+    return "Current model"  # model_compare.CURRENT, without importing scikit-learn's module here
+
+
+def render_model_comparison(mode: str) -> None:
+    """Machine-learning challengers for the round win chance, from the saved run of `python -m cs2_insights.model_compare`."""
+    try:
+        result = json.loads(MODEL_COMPARISON.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    st.markdown("#### Could machine learning do better?")
+    st.write(f"The mid-round win chance uses a simple model: players alive and the bomb. Three standard machine-learning models "
+             f"were tested against it the same way, leave one match out, with more to go on: the round clock, the side, both "
+             f"teams' equipment and the map. {result['matches']} matches, {result['states']:,} moments.")
+    models = pd.DataFrame(result["models"])
+    st.altair_chart(comparison_chart(models, mode), width="stretch")
+    pm = result.get("per_match")
+    if result["best"] == model_compare_current() or not pm:
+        verdict = "**The current model is still the best,** so it stays."
+    elif pm["mean_gain"] > 2 * pm["standard_error"]:
+        verdict = (f"**{result['best']} is better,** in {pm['better_in']} of {pm['of']} matches and by more than the "
+                   "match-to-match noise, so it's worth switching to.")
+    else:
+        verdict = (f"**{result['best']} scores a little better, but not reliably:** it wins {pm['better_in']} of {pm['of']} matches, "
+                   f"and its average gain ({pm['mean_gain']:.3f}) is within the match-to-match noise (±{pm['standard_error']:.3f}). "
+                   "The simple model stays until more matches settle it.")
+    st.markdown(verdict)
+    trees = models[models["model"].isin(["Gradient boosting", "XGBoost"])]
+    current_skill = float(models.loc[models["model"] == model_compare_current(), "skill"].iloc[0])
+    if len(trees) and (trees["skill"] < current_skill).all():
+        st.markdown("The tree models (gradient boosting, XGBoost) do worse than the simple model. With this few matches they "
+                    "learn quirks of the training matches that don't carry over to new ones.")
+    with st.expander("Details: every model and what XGBoost relied on"):
+        st.dataframe(
+            models[["model", "about", "skill", "brier", "log_loss", "auc"]].rename(columns={
+                "model": "Model", "about": "What it is", "skill": "Skill", "brier": "Brier score (lower is better)",
+                "log_loss": "Log loss (lower is better)", "auc": "AUC (higher is better)"}),
+            hide_index=True, width="stretch",
+            column_config={"Skill": st.column_config.NumberColumn(format="percent")},
+        )
+        top = pd.DataFrame(result["importance"]).rename(columns={"input": "Input", "share": "Share of XGBoost's gain"})
+        st.dataframe(top, hide_index=True, column_config={"Share of XGBoost's gain": st.column_config.NumberColumn(format="percent")})
+        st.caption(f"Run on {result['date']} with scikit-learn and XGBoost (requirements-ml.txt): "
+                   "`python -m cs2_insights.model_compare`. The site shows the saved result, so it doesn't need those libraries.")
 
 
 def confirmed(key: str) -> bool:

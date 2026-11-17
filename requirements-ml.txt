@@ -1,0 +1,4 @@
+# Only for the model comparison (python -m cs2_insights.model_compare). The app itself doesn't need these.
+-r requirements.txt
+scikit-learn==1.9.1
+xgboost==3.4.1

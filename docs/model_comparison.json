@@ -1,0 +1,81 @@
+{
+  "date": "2026-11-17",
+  "matches": 13,
+  "states": 3808,
+  "models": [
+    {
+      "model": "Current model",
+      "brier": 0.1795,
+      "skill": 0.2822,
+      "log_loss": 0.528,
+      "auc": 0.8017,
+      "about": "Hand-written logistic regression: players alive and the bomb (3 inputs)"
+    },
+    {
+      "model": "Logistic regression",
+      "brier": 0.1719,
+      "skill": 0.3125,
+      "log_loss": 0.5099,
+      "auc": 0.8228,
+      "about": "scikit-learn, with the round clock, side, both teams' equipment and the map"
+    },
+    {
+      "model": "Gradient boosting",
+      "brier": 0.1887,
+      "skill": 0.2451,
+      "log_loss": 0.5555,
+      "auc": 0.7879,
+      "about": "scikit-learn HistGradientBoostingClassifier, same inputs"
+    },
+    {
+      "model": "XGBoost",
+      "brier": 0.1899,
+      "skill": 0.2402,
+      "log_loss": 0.5596,
+      "auc": 0.7861,
+      "about": "XGBoost gradient-boosted trees, same inputs"
+    }
+  ],
+  "best": "Logistic regression",
+  "brier_gain": 0.0076,
+  "per_match": {
+    "better_in": 8,
+    "of": 13,
+    "mean_gain": 0.008,
+    "standard_error": 0.007
+  },
+  "importance": [
+    {
+      "input": "Players alive: difference",
+      "share": 0.343
+    },
+    {
+      "input": "Your team's equipment",
+      "share": 0.1981
+    },
+    {
+      "input": "Their equipment",
+      "share": 0.1979
+    },
+    {
+      "input": "Players alive: ratio",
+      "share": 0.1826
+    },
+    {
+      "input": "Map: de_inferno",
+      "share": 0.0214
+    },
+    {
+      "input": "Round clock",
+      "share": 0.0141
+    },
+    {
+      "input": "Map: de_dust2",
+      "share": 0.0112
+    },
+    {
+      "input": "Side (T or CT)",
+      "share": 0.0111
+    }
+  ]
+}
