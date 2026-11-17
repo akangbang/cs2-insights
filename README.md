@@ -1,5 +1,7 @@
 # Getleanpeek
 
+[![Tests](https://github.com/akangbang/cs2-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/akangbang/cs2-insights/actions/workflows/tests.yml)
+
 A decision coach for CS2: it grades your decisions, not just your aim.
 
 Most stat sites report what happened. Getleanpeek answers "what should I have done?". It reads your match demos and judges the decisions you control: every death (was it avoidable, did anyone trade you?), how well you cover teammates, your grenades and flashes, your clutches, your opening duels, and every force-or-save buy call. Each verdict comes with the facts behind it, a picture of the moment, and what to do next time. Pick one habit to work on and watch it change match by match.
@@ -138,7 +140,7 @@ pip install -e .
 copy .env.example .env      # then fill in the keys
 python -m cs2_insights.secretbox --new-key   # add the printed HALFTIME_SECRET_KEY to .env (encrypts Steam auth codes)
 docker compose up -d        # local PostgreSQL (the app also runs without it, using one match only)
-python -m pytest            # everything should pass
+python -m pytest            # everything should pass; GitHub Actions runs the same suite on every push (.github/workflows/tests.yml)
 ```
 
 ## Usage

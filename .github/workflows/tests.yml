@@ -1,0 +1,47 @@
+# Runs the test suite on every push and pull request, against a real PostgreSQL.
+# Tests that need real CS2 demos skip here: demos are 150-400 MB and stay on the developer's PC.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: decision_tracker
+          POSTGRES_USER: tracker
+          POSTGRES_PASSWORD: tracker_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tracker -d decision_tracker"
+          --health-interval 2s
+          --health-retries 30
+
+    env:
+      DATABASE_URL: postgresql://tracker:tracker_ci@localhost:5432/decision_tracker
+      HALFTIME_NO_TRACKING: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create the database tables
+        run: python -c "import sys; sys.path.insert(0, 'src'); from cs2_insights import db; db.init_schema(db.connect())"
+
+      - name: Run tests
+        run: python -m pytest -q -rs
