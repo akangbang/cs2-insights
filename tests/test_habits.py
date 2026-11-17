@@ -67,6 +67,8 @@ def test_a_users_habits_compare_with_the_whole_pool():
     matches = [m for m in db.load_matches(conn) if len(m.deaths)]
     deaths, chances, _ = db.pool_fights(conn)
     conn.commit()
+    if not matches:
+        pytest.skip("no stored matches (e.g. a fresh CI database)")
     played = pd.concat([m.player_rounds.drop_duplicates("steamid") for m in matches])["steamid"].value_counts()
     if played.empty or played.iat[0] < MIN_MATCHES:
         pytest.skip("no player with enough stored matches")
@@ -93,6 +95,8 @@ def test_spacing_habit_compares_your_far_deaths_with_the_pool():
     matches = [m for m in db.load_matches(conn) if len(m.deaths)]
     deaths, chances, _ = db.pool_fights(conn)
     conn.commit()
+    if not matches:
+        pytest.skip("no stored matches (e.g. a fresh CI database)")
     played = pd.concat([m.player_rounds.drop_duplicates("steamid") for m in matches])["steamid"].value_counts()
     if played.empty or played.iat[0] < MIN_MATCHES:
         pytest.skip("no player with enough stored matches")
