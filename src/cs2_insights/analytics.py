@@ -4,15 +4,18 @@ The numbers come from the same functions the app uses (fights.py, grade.py, util
 dashboard and a match report never disagree.
 
 Usage: python -m cs2_insights.analytics
+       python -m cs2_insights.analytics --powerbi-login   (also creates a read-only login for Power BI Desktop)
 """
 
+import secrets
 import sys
 from pathlib import Path
 
 import pandas as pd
 import psycopg
+from psycopg import sql
 
-from cs2_insights import db, fights
+from cs2_insights import db, fights, privacy
 from cs2_insights.demo import ParsedDemo
 from cs2_insights.fights import FightModel, clutches, coverage, coverage_summary, fit_fight_model, judge_deaths, opening_duels
 from cs2_insights.grade import GOOD_CALL, SHOULD_FORCE, SHOULD_SAVE, grade_decisions
@@ -117,7 +120,8 @@ def build(matches: list[ParsedDemo], parsed_at: dict | None = None) -> dict[str,
         "source": m.match.iloc[0].get("source"), "parsed_at": (parsed_at or {}).get(m.match.iloc[0]["match_id"]),
     } for i, m in enumerate(ordered, start=1)])
     names = pd.concat([m.player_rounds[["steamid", "name", "match_id"]] for m in matches], ignore_index=True)
-    tables["dim_player"] = names.groupby("steamid").agg(name=("name", "last"), matches=("match_id", "nunique")).reset_index()
+    players = names.groupby("steamid").agg(name=("name", "last"), matches=("match_id", "nunique")).reset_index()
+    tables["dim_player"] = players.assign(stand_in=players["steamid"].map(privacy.stand_in))
     return tables
 
 
@@ -144,11 +148,35 @@ def refresh(conn: psycopg.Connection) -> dict[str, int]:
     return counts
 
 
+POWERBI_LOGIN = "powerbi"
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+
+def create_powerbi_login(conn: psycopg.Connection, env_file: Path = ENV_FILE) -> str:
+    """A login that can only read the analytics schema (via analytics_reader), for Power BI Desktop.
+
+    A new random password is set each time and saved to `env_file` as POWERBI_PASSWORD; it is never printed.
+    """
+    password = secrets.token_urlsafe(24)
+    exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (POWERBI_LOGIN,)).fetchone()
+    verb = "ALTER" if exists else "CREATE"
+    conn.execute(sql.SQL(verb + " ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(POWERBI_LOGIN), sql.Literal(password)))
+    conn.execute(sql.SQL("GRANT analytics_reader TO {}").format(sql.Identifier(POWERBI_LOGIN)))
+    conn.commit()
+    lines = [line for line in (env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else [])
+             if not line.startswith("POWERBI_PASSWORD=")]
+    env_file.write_text("\n".join([*lines, f"POWERBI_PASSWORD={password}"]) + "\n", encoding="utf-8")
+    return POWERBI_LOGIN
+
+
 def main() -> int:
     with db.connect() as conn:
         db.init_schema(conn)
         for name, n in refresh(conn).items():
             print(f"{name:20} {n:6,} rows")
+        if "--powerbi-login" in sys.argv:
+            login = create_powerbi_login(conn)
+            print(f"\nPower BI login: {login} (read-only). Its password is POWERBI_PASSWORD in {ENV_FILE.name}.")
     return 0
 
 

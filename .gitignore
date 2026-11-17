@@ -27,3 +27,8 @@ data/
 .DS_Store
 Thumbs.db
 
+
+# Power BI: commit the project's text files (model, measures, report layout), never its data or saved logins.
+*.pbix
+**/.pbi/cache.abf
+**/.pbi/localSettings.json

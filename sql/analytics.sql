@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS analytics.dim_player (
     matches  integer NOT NULL
 );
 
+-- A made-up name per player (privacy.stand_in), so dashboards can be shown publicly.
+ALTER TABLE analytics.dim_player ADD COLUMN IF NOT EXISTS stand_in text;
+
 CREATE TABLE IF NOT EXISTS analytics.dim_match (
     match_id      text PRIMARY KEY,
     match_order   integer NOT NULL,  -- 1 = oldest stored match (Valve match IDs increase over time)

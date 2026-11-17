@@ -121,7 +121,7 @@ Stored matches live in PostgreSQL, and every match you open joins the pool the m
 **Early beta:** the pool is small, and distances are straight lines (walls aren't modelled yet). Treat verdicts as a guide, not gospel.
 
 ## Dashboards (Power BI)
-Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `sql/analytics.sql`) that Power BI reads directly. It is rebuilt by the same Python logic as the app, so a dashboard never disagrees with a match report.
+Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `sql/analytics.sql`) that Power BI reads directly. **[docs/powerbi.md](docs/powerbi.md)** builds a three-page report on it step by step: connection, model, every DAX measure (including pool comparison and a rolling average), and the page layouts. `python -m cs2_insights.analytics --powerbi-login` creates the read-only login it uses. `dim_player.stand_in` gives every player a made-up name, so dashboards can be shown publicly. It is rebuilt by the same Python logic as the app, so a dashboard never disagrees with a match report.
 
 | Table | One row per |
 |---|---|
@@ -136,7 +136,7 @@ Every stored match also feeds a star schema in PostgreSQL (`analytics` schema, `
 The tables refresh automatically when matches are added (the ingest command or **Add all replays**), or by hand with `python -m cs2_insights.analytics`.
 
 ## Stack
-Python (demoparser2, pandas, NumPy, scikit-learn, XGBoost), PostgreSQL, Streamlit + Altair, GitHub Actions CI. Planned: Power BI, Excel, AWS hosting.
+Python (demoparser2, pandas, NumPy, scikit-learn, XGBoost), PostgreSQL, Streamlit + Altair, Power BI (DAX), GitHub Actions CI. Planned: Power BI, Excel, AWS hosting.
 
 ## Setup (Windows, PowerShell)
 ```powershell

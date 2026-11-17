@@ -8,6 +8,7 @@ Two separate actions, because a match holds ten players' data:
   but nothing links them back to that Steam account.
 """
 
+import hashlib
 import uuid
 
 import psycopg
@@ -15,6 +16,11 @@ import psycopg
 from cs2_insights.db import DEATH_COLUMNS
 
 REMOVED_NAME = "Removed player"
+
+
+def stand_in(steamid: str) -> str:
+    """A made-up name for a player, the same in every match: for screenshots and public dashboards."""
+    return f"Player {int(hashlib.sha1(steamid.encode()).hexdigest(), 16) % 900 + 100}"
 
 
 def delete_account(conn: psycopg.Connection, user_id: str, local: bool = False) -> dict[str, int]:

@@ -220,7 +220,7 @@ def track(event: str, steamid: str | None = None, match_id: str | None = None, d
 
 def stand_in(steamid: str) -> str:
     """Screenshot mode's stand-in name for a player, the same in every match."""
-    return f"Player {int(hashlib.sha1(steamid.encode()).hexdigest(), 16) % 900 + 100}"
+    return privacy.stand_in(steamid)
 
 
 def hide_names(parsed: ParsedDemo) -> ParsedDemo:
