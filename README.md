@@ -109,6 +109,21 @@ Real output from real matches. Player names are replaced with stand-ins.
 - Works on phones (checked at iPhone width: no sideways scrolling, cards stack). Privacy and Terms pages; light and dark mode.
 
 ## How it works
+
+```mermaid
+flowchart LR
+    demo["CS2 / FACEIT demo<br/>(.dem upload or replays folder)"] --> parse["Parse<br/>demoparser2 · demo.py"]
+    parse --> guest{"Signed in?"}
+    guest -- "no (guest)" --> models
+    guest -- "yes" --> pg[("PostgreSQL<br/>Neon hosted · Docker local")]
+    pg -- "pool of every stored match" --> models["Models<br/>win chance · trade chance<br/>economy simulation"]
+    models --> verdicts["Verdicts<br/>deaths · clutches · buy calls<br/>coverage · utility"]
+    verdicts --> app["Streamlit app<br/>reports · habits · duo"]
+    pg --> etl["analytics.py<br/>star schema"] --> pbi["Power BI<br/>read-only login"]
+    pg --> eval["calibration.py · model_compare.py<br/>leave-one-match-out<br/>scikit-learn · XGBoost"] --> app
+    gh["GitHub Actions<br/>tests + coverage"] -.-> app
+```
+
 1. **Parse.** demoparser2 reads each round's money and equipment, every death, where every player stood and aimed at each death, every grenade and flash, and the bomb plant.
 2. **Round win chance.** Fitted to every stored round from players alive and whether the bomb is planted, so each death has a cost (`fights.py`).
 3. **Trade chance.** Fitted from how often players trade a teammate within 2 seconds, given their distance to the killer and how far their aim is from him. Only 12% of deaths in the current pool are traded that fast (`fights.py`).
@@ -150,7 +165,7 @@ pip install -e .
 copy .env.example .env      # then fill in the keys
 python -m cs2_insights.secretbox --new-key   # add the printed HALFTIME_SECRET_KEY to .env (encrypts Steam auth codes)
 docker compose up -d        # local PostgreSQL (the app also runs without it, using one match only)
-python -m pytest            # everything should pass; GitHub Actions runs the same suite on every push (.github/workflows/tests.yml)
+python -m pytest            # everything should pass; GitHub Actions runs the same suite with coverage on every push (.github/workflows/tests.yml)
 ```
 
 ## Usage
