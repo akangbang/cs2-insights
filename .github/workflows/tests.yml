@@ -35,7 +35,7 @@ jobs:
       HALFTIME_NO_TRACKING: "1"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
