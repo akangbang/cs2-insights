@@ -6,6 +6,11 @@ on:
   push:
   pull_request:
 
+# A newer push to the same branch cancels the run that's still going.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest

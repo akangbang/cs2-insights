@@ -1,8 +1,12 @@
 # Getleanpeek
 
 [![Tests](https://github.com/akangbang/cs2-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/akangbang/cs2-insights/actions/workflows/tests.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+[![Live site](https://img.shields.io/badge/live-getleanpeek.streamlit.app-ff4b4b)](https://getleanpeek.streamlit.app)
 
 A decision coach for CS2: it grades your decisions, not just your aim.
+
+**Try it:** <https://getleanpeek.streamlit.app>. No account needed: upload a demo and get your report.
 
 Most stat sites report what happened. Getleanpeek answers "what should I have done?". It reads your match demos and judges the decisions you control: every death (was it avoidable, did anyone trade you?), how well you cover teammates, your grenades and flashes, your clutches, your opening duels, and every force-or-save buy call. Each verdict comes with the facts behind it, a picture of the moment, and what to do next time. Pick one habit to work on and watch it change match by match.
 
