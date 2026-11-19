@@ -32,3 +32,8 @@ Thumbs.db
 *.pbix
 **/.pbi/cache.abf
 **/.pbi/localSettings.json
+
+# Test coverage output
+.coverage
+coverage.md
+htmlcov/

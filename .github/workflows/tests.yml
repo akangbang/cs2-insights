@@ -43,10 +43,17 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements-ml.txt  # the app's requirements plus scikit-learn and XGBoost
+        run: pip install -r requirements-ml.txt  # the app's requirements plus scikit-learn, XGBoost and pytest-cov
 
       - name: Create the database tables
         run: python -c "import sys; sys.path.insert(0, 'src'); from cs2_insights import db; db.init_schema(db.connect())"
 
-      - name: Run tests
-        run: python -m pytest -q -rs
+      - name: Run tests with coverage
+        run: python -m pytest -q -rs --cov=cs2_insights --cov-report=term --cov-report=markdown-append:coverage.md
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## Test coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tests that need real CS2 demos skip here, so this is lower than a full local run." >> "$GITHUB_STEP_SUMMARY"
+          cat coverage.md >> "$GITHUB_STEP_SUMMARY" || true

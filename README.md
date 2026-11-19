@@ -166,6 +166,7 @@ copy .env.example .env      # then fill in the keys
 python -m cs2_insights.secretbox --new-key   # add the printed HALFTIME_SECRET_KEY to .env (encrypts Steam auth codes)
 docker compose up -d        # local PostgreSQL (the app also runs without it, using one match only)
 python -m pytest            # everything should pass; GitHub Actions runs the same suite with coverage on every push (.github/workflows/tests.yml)
+python -m pytest --cov=cs2_insights   # 245 tests, 93% line coverage (needs requirements-ml.txt; CI runs without demos, so it reports less)
 ```
 
 ## Usage
