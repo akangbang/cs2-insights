@@ -1,0 +1,19 @@
+# One line ending everywhere: text files are stored and checked out with LF on every OS,
+# so Windows and GitHub agree and git stops warning about CRLF on each commit.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Never touch binary files.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.pbix binary
+*.dem binary
+*.zst binary
+*.gz binary
