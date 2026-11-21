@@ -226,6 +226,7 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 | `sql/schema.sql` | Database schema |
 | `docs/screenshots/` | README pictures (taken in screenshot mode) |
 | `legal/` | Privacy policy and terms (drafts) |
+| `SECURITY.md` | How to report a security problem privately |
 
 ---
 Not affiliated with or endorsed by Valve Corporation. Counter-Strike and CS2 are trademarks of Valve Corporation.
