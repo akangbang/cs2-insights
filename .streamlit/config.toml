@@ -1,6 +1,8 @@
 [server]
 # CS2 demos are 150-400 MB.
 maxUploadSize = 1024
+# Serves ./static, for the self-hosted fonts below (no request to Google from players' browsers).
+enableStaticServing = true
 
 [browser]
 # Don't send usage statistics to Streamlit; the privacy policy says nothing leaves the app.
@@ -10,9 +12,81 @@ gatherUsageStats = false
 # Hide the Deploy button and developer menu.
 toolbarMode = "viewer"
 
-# Getleanpeek blue as the accent (validated chart palette slot 1), per mode so dark mode still follows the OS.
+# The look: a scouting sheet. Ink on paper in light mode, chalk on slate in dark mode, a dark rail
+# for the sidebar in both, square corners, condensed headings and monospaced numbers.
+# Fonts are SIL OFL licensed; the licences are in static/fonts.
+[[theme.fontFaces]]
+family = "Plex"
+url = "app/static/fonts/IBMPlexSans.woff2"
+weight = "100 700"
+
+[[theme.fontFaces]]
+family = "Plex Mono"
+url = "app/static/fonts/IBMPlexMono-400.woff2"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Plex Mono"
+url = "app/static/fonts/IBMPlexMono-600.woff2"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Barlow Condensed"
+url = "app/static/fonts/BarlowCondensed-500.woff2"
+weight = 500
+
+[[theme.fontFaces]]
+family = "Barlow Condensed"
+url = "app/static/fonts/BarlowCondensed-700.woff2"
+weight = 700
+
+[theme]
+font = "Plex, sans-serif"
+headingFont = "'Barlow Condensed', sans-serif"
+headingFontWeights = [700, 700, 700, 500, 500, 500]
+headingFontSizes = ["3.4rem", "2.2rem", "1.6rem", "1.05rem", "1rem", "0.9rem"]
+codeFont = "'Plex Mono', monospace"
+metricValueFontSize = "2rem"
+baseRadius = "0.125rem"
+buttonRadius = "0.125rem"
+showWidgetBorder = true
+showSidebarBorder = false
+
+# Accent = "your team" blue (validated chart palette slot 1), so the brand colour and "you" are one colour.
 [theme.light]
 primaryColor = "#2a78d6"
+backgroundColor = "#f3efe6"
+secondaryBackgroundColor = "#e7e1d3"
+textColor = "#1b1914"
+borderColor = "#c9c0ad"
+linkColor = "#1d5fae"
+codeBackgroundColor = "#e7e1d3"
+dataframeHeaderBackgroundColor = "#e7e1d3"
+greenColor = "#0a7d0a"
+orangeColor = "#b4501f"
+redColor = "#b42f2f"
+
+[theme.light.sidebar]
+backgroundColor = "#1b1914"
+secondaryBackgroundColor = "#2a2721"
+textColor = "#ece6d8"
+borderColor = "#423e35"
+primaryColor = "#3987e5"
+linkColor = "#8db8ef"
+codeBackgroundColor = "#2a2721"
 
 [theme.dark]
 primaryColor = "#3987e5"
+backgroundColor = "#141412"
+secondaryBackgroundColor = "#201f1b"
+textColor = "#ece6d8"
+borderColor = "#38352e"
+linkColor = "#8db8ef"
+codeBackgroundColor = "#201f1b"
+dataframeHeaderBackgroundColor = "#201f1b"
+
+[theme.dark.sidebar]
+backgroundColor = "#0c0c0a"
+secondaryBackgroundColor = "#1a1916"
+textColor = "#ece6d8"
+borderColor = "#2e2c26"

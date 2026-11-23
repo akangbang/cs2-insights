@@ -81,14 +81,51 @@ DISCLAIMER = (
 COLORS = {
     "light": {
         "Your team": "#2a78d6", "Opponent": "#eb6834", "good": "#0ca30c", "serious": "#ec835a", "critical": "#d03b3b",
-        "aqua": "#1baf7a", "neutral": "#8a8984", "band": "#e4e3df", "text": "#0b0b0b", "on_fill": "#0b0b0b", "surface": "#ffffff",
+        "aqua": "#1baf7a", "neutral": "#8a8984", "band": "#ddd5c4", "text": "#1b1914", "on_fill": "#0b0b0b", "surface": "#f3efe6",
     },
     "dark": {
         "Your team": "#3987e5", "Opponent": "#d95926", "good": "#0ca30c", "serious": "#ec835a", "critical": "#d03b3b",
-        "aqua": "#199e70", "neutral": "#8a8984", "band": "#383835", "text": "#f0efec", "on_fill": "#0b0b0b", "surface": "#0e1117",
+        "aqua": "#199e70", "neutral": "#8a8984", "band": "#34322c", "text": "#ece6d8", "on_fill": "#0b0b0b", "surface": "#141412",
     },
 }
 DEATH_GROUP_ORDER = ["Traded", "Avoidable", "Teammates didn't trade", "Lost a duel"]
+
+
+def badge(text: str, color: str) -> str:
+    """A small coloured tag in front of a verdict. The word or sign carries the meaning; the colour only repeats it."""
+    return f":{color}-badge[{text}]"
+
+
+GOOD, FIX, EVEN = badge("good", "green"), badge("fix", "orange"), badge("even", "gray")
+
+# The scouting-sheet look on top of the theme in .streamlit/config.toml: kicker headings with a rule,
+# monospaced numbers and labels, tight condensed titles.
+STYLE = """<style>
+h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.01em; }
+h1 { line-height: 0.95 !important; }
+h4 {
+  font-family: 'Plex Mono', monospace !important; font-weight: 600 !important; text-transform: uppercase;
+  letter-spacing: 0.14em; font-size: 0.8rem !important; border-top: 2px solid currentColor; padding-top: 0.55rem !important;
+  margin-top: 0.6rem;
+}
+[data-testid="stMetricValue"] { font-family: 'Plex Mono', monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+[data-testid="stMetricLabel"] p, [data-testid="stTab"] p {
+  font-family: 'Plex Mono', monospace; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.76rem;
+}
+[data-testid="stAlertContainer"] { border-left: 3px solid currentColor; }
+.lp-kicker { font-family: 'Plex Mono', monospace; text-transform: uppercase; letter-spacing: 0.18em; font-size: 0.72rem; opacity: 0.7; }
+.lp-kicker b { color: var(--lp-accent, #3987e5); opacity: 1; }
+.stMarkdownBadge {
+  font-family: 'Plex Mono', monospace; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  font-size: 0.78rem !important; min-width: 1.5em; text-align: center; display: inline-block;
+}
+</style>"""
+
+
+def masthead(kicker: str, title: str) -> None:
+    """Page title with a small monospaced line above it, like the header of a printed sheet."""
+    st.markdown(f'<div class="lp-kicker">{kicker}</div>', unsafe_allow_html=True)
+    st.title(title, anchor=False)
 
 
 def map_label(name: str | None) -> str:
@@ -167,11 +204,11 @@ def analyse(load, key: str, name: str):
         return (parsed, *save_and_pool(parsed))
     compressed = not name.lower().endswith(".dem")
     with st.status("Analysing your match…", expanded=True) as status:
-        st.write("✔ The file looks like a CS2 demo.")
+        st.write("Checked: the file looks like a CS2 demo.")
         st.write(("Unpacking it and reading" if compressed else "Reading") + " every round, kill and grenade (about 5–10 seconds)…")
         parsed = load()
         rounds = int(parsed.match.iloc[0]["rounds"])
-        st.write(f"✔ Read {rounds} rounds and {len(parsed.deaths)} kills. Comparing with the other matches in the pool…")
+        st.write(f"Read {rounds} rounds and {len(parsed.deaths)} kills. Comparing with the other matches in the pool…")
         result = save_and_pool(parsed)
         status.update(label=f"Match analysed: {rounds} rounds", state="complete", expanded=False)
     seen.add(key)
@@ -338,22 +375,22 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     if not report.moments:
         st.write("A clean game: no costly calls, avoidable deaths or big swings.")
     for moment in report.moments:
-        icon = "✅" if moment.kind == "good" else "⚠️"
+        icon = GOOD if moment.kind == "good" else FIX
         with st.container(border=True):
             st.markdown(f"{icon} **{moment.title}**  \n{moment.detail}")
 
     # Three groups, each with its own sub-tabs, so the page doesn't open on a wall of six choices.
-    fights_tab, teamplay_tab, economy_tab, plan_tab = st.tabs(["⚔️ Fights", "🤝 Teamplay", "💰 Economy", "🧭 Second-half plan"])
+    fights_tab, teamplay_tab, economy_tab, plan_tab = st.tabs(["Fights", "Teamplay", "Economy", "Second-half plan"])
     with plan_tab:
         render_second_half(report, mode)
     with fights_tab:
-        deaths_tab, clutch_tab = st.tabs(["💀 Your deaths", "🎯 Clutches & openings"])
+        deaths_tab, clutch_tab = st.tabs(["Your deaths", "Clutches & openings"])
         with deaths_tab:
             render_deaths(report, mode)
         with clutch_tab:
             render_clutches(report)
     with teamplay_tab:
-        cover_tab, spacing_tab, utility_tab = st.tabs(["🤝 Covering teammates", "📏 Spacing", "🧨 Utility"])
+        cover_tab, spacing_tab, utility_tab = st.tabs(["Covering teammates", "Spacing", "Utility"])
         with cover_tab:
             render_coverage(report, mode)
         with spacing_tab:
@@ -361,7 +398,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
         with utility_tab:
             render_utility(report, mode)
     with economy_tab:
-        calls_tab, rounds_tab = st.tabs(["💰 Buy calls", "📈 Round by round"])
+        calls_tab, rounds_tab = st.tabs(["Buy calls", "Round by round"])
         with calls_tab:
             render_buy_calls(report)
         with rounds_tab:
@@ -373,7 +410,7 @@ def render_report(report: Report, past: pd.DataFrame | None = None, current: dic
     )
 
 
-TIMELINE_PRIORITY = ["⚠️", "💰", "🏆", "💀"]
+TIMELINE_PRIORITY = ["!", "$", "★", "×"]
 
 
 def timeline_data(report: Report) -> pd.DataFrame:
@@ -388,16 +425,16 @@ def timeline_data(report: Report) -> pd.DataFrame:
     for r in report.rounds.itertuples():
         icons, notes = [], []
         if r.round in avoidable:
-            icons.append("⚠️")
+            icons.append("!")
             notes.append(deaths.loc[(deaths["round"] == r.round) & deaths["label"].isin(fights.AVOIDABLE), "label"].iat[0])
         elif r.round in died:
-            icons.append("💀")
+            icons.append("×")
             notes.append(deaths.loc[deaths["round"] == r.round, "label"].iat[0])
         if r.round in wrong:
-            icons.append("💰")
+            icons.append("$")
             notes.append(calls.loc[calls["round"] == r.round, "grade"].iat[0])
         if r.round in clutches_won:
-            icons.append("🏆")
+            icons.append("★")
             notes.append("Won a clutch")
         # One icon per tile so they fit on a phone; the tooltip lists everything.
         icon = min(icons, key=TIMELINE_PRIORITY.index) if icons else ""
@@ -424,8 +461,8 @@ def timeline_chart(data: pd.DataFrame, mode: str) -> alt.Chart:
         opacity=alt.condition(pick, alt.value(1.0), alt.value(0.8)),
         tooltip=[alt.Tooltip("round:O", title="Round"), alt.Tooltip("result:N", title="Result"), alt.Tooltip("notes:N", title="What happened")],
     ).add_params(pick)
-    icons = alt.Chart(data).mark_text(fontSize=14, baseline="middle", dy=-5).encode(x=x, y=y, text="icons:N")
-    numbers = alt.Chart(data).mark_text(fontSize=9, baseline="middle", dy=11, color=palette["on_fill"]).encode(x=x, y=y, text="round:O")
+    icons = alt.Chart(data).mark_text(fontSize=15, fontWeight="bold", font="Plex Mono", baseline="middle", dy=-5, color=palette["on_fill"]).encode(x=x, y=y, text="icons:N")
+    numbers = alt.Chart(data).mark_text(fontSize=9, font="Plex Mono", baseline="middle", dy=11, color=palette["on_fill"]).encode(x=x, y=y, text="round:O")
     return alt.layer(tiles, icons, numbers).properties(height=alt.Step(40))
 
 
@@ -433,7 +470,7 @@ def render_timeline(report: Report, mode: str) -> None:
     data = timeline_data(report)
     st.markdown("#### Round by round")
     event = st.altair_chart(timeline_chart(data, mode), width="stretch", on_select="rerun", key="timeline")
-    st.caption("Green = round won, red = round lost · ⚠️ avoidable death · 💰 wrong buy call · 🏆 clutch won · 💀 other death "
+    st.caption("Green = round won, red = round lost · **!** avoidable death · **\\$** wrong buy call · **★** clutch won · **×** other death "
                "(the most important one shows; hover for all). Click a round to see what happened.")
     picked = (event.selection.get("pick") or [{}])[0].get("round") if event and event.selection else None
     if picked is not None:
@@ -485,25 +522,25 @@ def render_round(report: Report, number: int) -> None:
     """Everything that happened to you in one round, in one card."""
     r = report.rounds.set_index("round").loc[number]
     with st.container(border=True):
-        st.markdown(f"**Round {number} · {'✅ Won' if r['won'] else '❌ Lost'}** · score before {r['score']} · {r['side']} · "
+        st.markdown(f"**Round {number} · {'Won' if r['won'] else 'Lost'}** · score before {r['score']} · {r['side']} · "
                     f"your {BUY_LABELS[r['your_buy']].lower()} (\\${r['your_equip']:,}) vs their {BUY_LABELS[r['their_buy']].lower()} (\\${r['their_equip']:,})")
         # (Two "$" in one markdown line would render as a maths formula, hence the escapes.)
         render_chain(report, number, r)
         calls = report.calls[report.calls["round"] == number] if len(report.calls) else report.calls
         for _, call in calls.iterrows():
-            st.markdown(f"💰 **Buy call: {call['grade']}.** {call_detail(call)}")
+            st.markdown(f"{badge('buy', 'blue')} **{call['grade']}.** {call_detail(call)}")
         openings = report.openings[report.openings["round"] == number] if len(report.openings) else report.openings
         for o in openings.itertuples():
-            st.markdown(f"🚪 **Opening duel {'won' if o.won else 'lost'}** at {place_label(o.place)} ({o.weapon}).")
+            st.markdown(f"{badge('opening', 'blue')} **Opening duel {'won' if o.won else 'lost'}** at {place_label(o.place)} ({o.weapon}).")
         flashes = report.team_flashes[report.team_flashes["round"] == number] if len(report.team_flashes) else report.team_flashes
         for f in flashes.itertuples():
-            st.markdown(f"🧨 Your flash blinded **{report.names.get(f.blinded, 'a teammate')}** for {f.seconds:.1f}s.")
+            st.markdown(f"{badge('flash', 'blue')} Your flash blinded **{report.names.get(f.blinded, 'a teammate')}** for {f.seconds:.1f}s.")
         clutch = report.clutches[report.clutches["round"] == number] if len(report.clutches) else report.clutches
         for _, c in clutch.iterrows():
-            st.markdown(f"{CLUTCH_ICONS[c['verdict']]} **1v{int(c['enemies'])}: {c['verdict']}.** " + " ".join(clutch_reasons(c)))
+            st.markdown(f"{badge(c['verdict'], CLUTCH_COLORS[c['verdict']])} **1v{int(c['enemies'])}.** " + " ".join(clutch_reasons(c)))
         deaths = report.deaths[report.deaths["round"] == number] if len(report.deaths) else report.deaths
         if deaths.empty:
-            st.markdown("🛡️ You survived the round.")
+            st.markdown(f"{GOOD} You survived the round.")
         for _, death in deaths.iterrows():
             death_card(death, report, where="round")
 
@@ -515,7 +552,7 @@ def theme_mode() -> str:
 def render_share(report: Report) -> None:
     """An image of this match to post, built from the same numbers as the scorecards. No player names."""
     s = report.summary
-    with st.expander("📤 Share this match"):
+    with st.expander("Share this match"):
         fought = s.get("fights_parsed")
         stats = [
             ("Avoidable deaths", f"{s['avoidable_deaths']} of {s['deaths']}" if fought else "–"),
@@ -574,7 +611,8 @@ def render_scorecards(report: Report, past: pd.DataFrame, match_id: str | None) 
 
 
 SHORT_LABELS = {fights.REPEEK: "re-peek", fights.ALONE: "pushed alone", fights.SHOULD_SAVE: "lost gear in a lost round"}
-DEATH_ICONS = {"Traded": "✅", "Avoidable": "⚠️", "Teammates didn't trade": "🤝", "Lost a duel": "⚔️", "Other": "•"}
+DEATH_ICONS = {"Traded": badge("traded", "green"), "Avoidable": badge("avoidable", "orange"),
+               "Teammates didn't trade": badge("untraded", "gray"), "Lost a duel": badge("duel", "gray"), "Other": badge("other", "gray")}
 
 
 DISAGREE_REASONS = ["A wall or smoke was in the way", "It was the right play", "The facts look wrong", "Something else"]
@@ -586,9 +624,9 @@ def disagree_button(report: Report, kind: str, verdict: str, round_: int, tick: 
         return
     key = f"disagree_{kind}_{where}_{report.match_id}_{report.steamid}_{tick}"
     if st.session_state.get(key):
-        st.caption("👎 Noted, thanks. This helps find where Getleanpeek gets it wrong.")
+        st.caption("Noted, thanks. This helps find where Getleanpeek gets it wrong.")
         return
-    with st.popover("👎 Disagree"):
+    with st.popover("Disagree"):
         st.caption("What looks wrong?")
         for i, reason in enumerate(DISAGREE_REASONS):
             if st.button(reason, key=f"{key}_{i}"):
@@ -794,14 +832,13 @@ def render_coverage(report: Report, mode: str) -> None:
     st.markdown("#### Every teammate death near you")
     st.altair_chart(coverage_chart(cover, names, mode), width="stretch")
     counts = cover.apply(cover_group, axis=1).value_counts()
-    icons = {"You traded": "✅", "In position": "🎯", "Facing away": "⚠️", "Too far": "📏"}
-    st.markdown(" · ".join(f"{icons[g]} **{counts.get(g, 0)}** {g.lower()}" for g in COVER_GROUPS))
+    st.markdown(" · ".join(f"**{counts.get(g, 0)}** {g.lower()}" for g in COVER_GROUPS))
     st.caption("Each dot is one teammate death. Dots in the green box are where trades happen; the further a dot sits "
                "from it, the less chance you had.")
 
     good_col, bad_col = st.columns(2)
     with good_col:
-        st.markdown("#### ✅ Repeat this")
+        st.markdown("#### Repeat this")
         good = cover[cover["verdict"] == fights.COVER_TRADED].sort_values("trade_seconds")
         if good.empty:
             good = cover[cover.apply(cover_group, axis=1) == "In position"].sort_values("chance", ascending=False)
@@ -810,7 +847,7 @@ def render_coverage(report: Report, mode: str) -> None:
         for _, row in good.head(2).iterrows():
             cover_card(row, report)
     with bad_col:
-        st.markdown("#### ⚠️ Fix this")
+        st.markdown("#### Fix this")
         bad = cover[cover["verdict"] == fights.COVER_FACING_AWAY].sort_values("lost", ascending=False)
         far = cover[cover["verdict"] == fights.COVER_TOO_FAR].sort_values("cost", ascending=False)
         if bad.empty and far.empty:
@@ -841,7 +878,7 @@ def render_coverage(report: Report, mode: str) -> None:
 
 def cover_card(row: pd.Series, report: Report) -> None:
     names = report.names
-    icon = "✅" if row["verdict"] in (fights.COVER_TRADED, fights.COVER_SET_UP) else "⚠️"
+    icon = GOOD if row["verdict"] in (fights.COVER_TRADED, fights.COVER_SET_UP) else FIX
     with st.container(border=True):
         st.markdown(f"{icon} **Round {row['round']} · {clock(row['round_seconds'])}** — "
                     f"{names.get(row['victim'], 'A teammate')} died at {place_label(row['victim_place'])}")
@@ -888,13 +925,13 @@ def render_replay(replay: Replay | None) -> None:
     """A decision replayed: what each option was worth, and what that says."""
     if replay is None:
         return
-    st.markdown(f"**🔁 Replay: {replay.question}**")
+    st.markdown(f"{badge('replay', 'blue')} **{replay.question}**")
     st.altair_chart(replay_chart(replay, theme_mode()), width="stretch")
     st.markdown(replay.takeaway)
     st.caption(f"{replay.note} These are estimates from Getleanpeek's models, not a prediction of what would have happened.")
 
 
-PLAN_ICONS = {DID_IT: "✅", SOME_PROGRESS: "➖", NO_CHANGE: "⚠️", TOO_FEW: "⏳"}
+PLAN_COLORS = {DID_IT: "green", SOME_PROGRESS: "gray", NO_CHANGE: "orange", TOO_FEW: "gray"}
 
 
 def plan_chart(plan: Plan, mode: str) -> alt.Chart:
@@ -931,7 +968,7 @@ def render_second_half(report: Report, mode: str) -> None:
             st.markdown(f"**{number}. {item.label}** · {item.first} time{'s' if item.first != 1 else ''} in the first half  \n**In the second half:** {item.action}")
             if item.status:
                 detail = f"{item.first} in {plan.first_rounds} rounds, then {item.second} in {plan.second_rounds}."
-                st.markdown(f"{PLAN_ICONS[item.status]} **{item.status}.** {detail}")
+                st.markdown(f"{badge(item.status, PLAN_COLORS[item.status])} {detail}")
     if plan.second_rounds:
         st.altair_chart(plan_chart(plan, mode), width="stretch")
     st.caption("One half is a small sample, so read this as what happened, not a score. \"Did it\" means the rate per round at least halved; "
@@ -950,13 +987,13 @@ def render_buy_calls(report: Report) -> None:
     wrong = calls[calls["grade"].isin([SHOULD_FORCE, SHOULD_SAVE])].sort_values("cost", ascending=False)
     for _, call in wrong.iterrows():
         with st.container(border=True):
-            st.markdown(f"⚠️ **Round {call['round']}** — {call['grade']}  \n{call_detail(call)}")
+            st.markdown(f"{badge(call['grade'], 'orange')} **Round {call['round']}**  \n{call_detail(call)}")
             render_replay(call_replay(call))
             st.caption(describe(*call_confidence(call)))
             disagree_button(report, "buy_call", call["grade"], call["round"], call["round"])
     right = calls[calls["grade"] == GOOD_CALL]
     if len(right):
-        st.markdown(f"✅ **{len(right)} right call{'s' if len(right) != 1 else ''}:** rounds "
+        st.markdown(f"{GOOD} **{len(right)} right call{'s' if len(right) != 1 else ''}:** rounds "
                     f"{', '.join(map(str, right['round']))}.")
     with st.expander("Every buy call"):
         render_calls(calls)
@@ -1170,7 +1207,7 @@ def render_spacing(report: Report, mode: str) -> None:
                         "Getleanpeek only sees deaths, so it can't measure that yet, and doesn't grade crossfires until it can.")
 
 
-FLASH_ICONS = {FLASH_COST_TEAMMATE: "❌", FLASH_WASTED: "⚠️", FLASH_TRADE_OFF: "➖"}
+FLASH_COLORS = {FLASH_COST_TEAMMATE: "red", FLASH_WASTED: "orange", FLASH_TRADE_OFF: "gray"}
 FLASH_ORDER = [FLASH_COST_TEAMMATE, FLASH_WASTED, FLASH_TRADE_OFF]
 FLASH_ROLES = ["You", "Teammate", "Enemy also blinded"]
 FLASH_CARDS_SHOWN = 3
@@ -1220,7 +1257,7 @@ def flash_card(flash: pd.Series, report: Report, mode: str) -> None:
     with st.container(border=True):
         words, picture = st.columns([3, 2])
         with words:
-            st.markdown(f"{FLASH_ICONS[verdict]} **Round {flash['round']} · {verdict}**")
+            st.markdown(f"{badge(verdict, FLASH_COLORS[verdict])} **Round {flash['round']}**")
             st.markdown(flash_reasons(flash, report.names.get(flash["blinded"], "a teammate")))
             st.markdown(f"**Next time:** {FLASH_FIXES[verdict]}")
             watch_hint(flash["tick"])
@@ -1234,14 +1271,14 @@ def flash_card(flash: pd.Series, report: Report, mode: str) -> None:
 
 
 def render_flash_review(report: Report, mode: str) -> None:
-    st.markdown("#### ⚡ Flash review")
+    st.markdown("#### Flash review")
     review = report.flash_review
     if review.empty:
         st.write("You didn't blind a teammate for a second or more. Clean flashes.")
         return
     counts = review["verdict"].value_counts()
     st.markdown(f"Your flashes blinded a teammate **{len(review)}** time{'s' if len(review) != 1 else ''}: "
-                + " · ".join(f"{FLASH_ICONS[v]} {counts[v]} {v.lower()}" for v in FLASH_ORDER if v in counts))
+                + " · ".join(f"**{counts[v]}** {v.lower()}" for v in FLASH_ORDER if v in counts))
     ordered = review.assign(rank=review["verdict"].map(FLASH_ORDER.index)).sort_values(["rank", "death_cost", "seconds"], ascending=[True, False, False])
     rows = [row for _, row in ordered.iterrows()]
     for flash in rows[:FLASH_CARDS_SHOWN]:
@@ -1276,7 +1313,7 @@ def render_utility(report: Report, mode: str) -> None:
 
     render_flash_review(report, mode)
 
-    st.markdown("#### 💸 Died holding grenades")
+    st.markdown("#### Died holding grenades")
     unused = report.deaths[report.deaths["unused_utility"] >= UNUSED_WORTH_MENTION] if len(report.deaths) and "unused_utility" in report.deaths else pd.DataFrame()
     if unused.empty:
         st.write("You used your utility before your fights.")
@@ -1287,9 +1324,9 @@ def render_utility(report: Report, mode: str) -> None:
                    "or drop them to a teammate.")
 
 
-CLUTCH_ICONS = {
-    fights.CLUTCH_WON: "🏆", fights.CLUTCH_PLAYED: "✅", fights.CLUTCH_SAVED: "✅",
-    fights.CLUTCH_SHOULD_SAVE: "⚠️", fights.CLUTCH_SHOULD_PLAY: "⚠️", fights.CLUTCH_CLOSE: "➖",
+CLUTCH_COLORS = {
+    fights.CLUTCH_WON: "green", fights.CLUTCH_PLAYED: "green", fights.CLUTCH_SAVED: "green",
+    fights.CLUTCH_SHOULD_SAVE: "orange", fights.CLUTCH_SHOULD_PLAY: "orange", fights.CLUTCH_CLOSE: "gray",
 }
 
 
@@ -1307,7 +1344,7 @@ def render_clutches(report: Report) -> None:
         st.markdown(f"**{won}** of **{len(clutch)}** clutches won · **{wrong}** fight-or-save mistakes")
         for _, c in clutch.iterrows():
             with st.container(border=True):
-                st.markdown(f"{CLUTCH_ICONS[c['verdict']]} **Round {c['round']} · 1v{int(c['enemies'])}** — {c['verdict']}")
+                st.markdown(f"{badge(c['verdict'], CLUTCH_COLORS[c['verdict']])} **Round {c['round']} · 1v{int(c['enemies'])}**")
                 st.markdown("\n".join(f"- {reason}" for reason in clutch_reasons(c)))
                 if c["verdict"] in CLUTCH_FIXES:
                     st.markdown(f"**Next time:** {CLUTCH_FIXES[c['verdict']]}")
@@ -1328,7 +1365,7 @@ def render_clutches(report: Report) -> None:
                 "Winning the opening duel puts your team 5v4; losing it puts you 4v5.")
     st.dataframe(
         pd.DataFrame({"round": od["round"], "side": od["side"], "where": od["place"].map(place_label),
-                      "result": od["won"].map({True: "✅ Won", False: "❌ Lost"}), "weapon": od["weapon"]}),
+                      "result": od["won"].map({True: "Won", False: "Lost"}), "weapon": od["weapon"]}),
         hide_index=True, width="stretch",
         column_config={"round": "Round", "side": "Side", "where": "Where you were", "result": "Result", "weapon": "Weapon used"},
     )
@@ -1499,12 +1536,12 @@ def render_focus_banner(current: dict, past: pd.DataFrame, exclude: str) -> None
     others = past[past["match_id"] != exclude].tail(RECENT_MATCHES) if len(past) else past
     value = current.get(column)
     if value is None or others.empty or column not in others:
-        st.info(f"🎯 Your focus: **{label}**. This match: {format_focus(value, column)}.")
+        st.info(f"Your focus: **{label}**. This match: {format_focus(value, column)}.")
         return
     average = others[column].mean()
     better = (value < average) if lower_is_better else (value > average)
-    verdict = "✅ better than" if better else "⚠️ worse than" if value != average else "level with"
-    st.info(f"🎯 Your focus: **{label}**. This match: **{format_focus(value, column)}**, {verdict} your last "
+    verdict = "better than" if better else "worse than" if value != average else "level with"
+    st.info(f"Your focus: **{label}**. This match: **{format_focus(value, column)}**, {verdict} your last "
             f"{len(others)} matches ({format_focus(average, column)}).")
 
 
@@ -1526,12 +1563,12 @@ def focus_chart(past: pd.DataFrame, column: str, mode: str) -> alt.Chart:
 
 
 GUIDE_STEPS = [
-    ("📥", "Get a match",
+    ("01", "Get a match",
      "In CS2 open **Watch → Your Matches** and press **Download** on a match. Getleanpeek finds it in your replays folder "
      "automatically. On FACEIT, download the demo from the match room and use **Upload a demo** in the sidebar."),
-    ("🗂️", "Pick it", "Choose the match in the sidebar. The newest download is at the top."),
-    ("🙋", "Pick yourself", "Choose your name, then press **This is me** so Getleanpeek opens on you from then on."),
-    ("🎯", "Learn one thing", "Every death, buy, grenade and clutch is judged with the reasons. Pick one habit to work on in "
+    ("02", "Pick it", "Choose the match in the sidebar. The newest download is at the top."),
+    ("03", "Pick yourself", "Choose your name, then press **This is me** so Getleanpeek opens on you from then on."),
+    ("04", "Learn one thing", "Every death, buy, grenade and clutch is judged with the reasons. Pick one habit to work on in "
      "**Your habits** and watch it change match by match."),
 ]
 
@@ -1595,7 +1632,7 @@ def category_picker(matches: list, key: str) -> list:
 
 
 def report_page() -> None:
-    st.title("Getleanpeek")
+    masthead("CS2 · <b>decision review</b>", "Getlean:primary[peek]")
     st.write("Your CS2 decisions, graded: your buys, your deaths, and how well you cover your teammates.")
     if guest():
         sign_in_box("**No account needed.** Upload a demo for your report. It isn't saved: sign in to keep your matches "
@@ -1685,7 +1722,7 @@ def report_page() -> None:
     steamid = names[picked]
     st.session_state["steamid"] = steamid
     if database() is not None and saved_setting("me") != steamid:
-        if st.button(f"⭐ This is me: always open my reports as {picked.split('  ·  ')[0]}"):
+        if st.button(f"This is me: always open my reports as {picked.split('  ·  ')[0]}"):
             save_setting("me", steamid)
             track("player_saved", steamid=steamid)
             st.toast("Saved. Getleanpeek will pick you automatically from now on.")
@@ -1785,12 +1822,12 @@ def habits_page() -> None:
         st.subheader("Keep doing this")
         for habit in habits.strengths:
             with st.container(border=True):
-                st.markdown(f"✅ **{habit.title}**  \n{habit.detail}")
+                st.markdown(f"{GOOD} **{habit.title}**  \n{habit.detail}")
 
     names = {}
     for m in matches:
         names.update(m.player_rounds.drop_duplicates("steamid", keep="last").set_index("steamid")["name"].to_dict())
-    tabs = st.tabs(["📉 Avoidable deaths by match", "🤝 Coverage across matches", "🗺️ Maps", "🔀 CT vs T", "🚪 Opening duels by callout", "💰 Every buy call"])
+    tabs = st.tabs(["Avoidable deaths by match", "Coverage across matches", "Maps", "CT vs T", "Opening duels by callout", "Every buy call"])
     misses = collect(matches, labels[picked], fight_model, slope)
     with tabs[2]:
         render_maps(misses, mode)
@@ -1845,9 +1882,9 @@ def render_sides(misses: Misses, mode: str) -> None:
         return
     notes = side_notes(table)
     for note in notes:
-        st.markdown(f"⚠️ {note}")
+        st.markdown(f"{FIX} {note}")
     if not notes:
-        st.markdown("✅ None of your misses is clearly worse on one side.")
+        st.markdown(f"{GOOD} None of your misses is clearly worse on one side.")
     st.altair_chart(sides_chart(table, mode), width="stretch")
     played = misses.rounds.groupby("side").size()
     st.caption(f"Each habit per {HALF} rounds on that side, so the side you played more doesn't look worse. Rounds played: "
@@ -1880,10 +1917,10 @@ def render_maps(misses: Misses, mode: str) -> None:
     if best is not None:
         left, right = st.columns(2)
         with left.container(border=True):
-            st.markdown(f"✅ **Best map: {map_label(best['map'])}**  \n{best['avoidable_per_match']:.1f} avoidable deaths per match, "
+            st.markdown(f"{GOOD} **Best map: {map_label(best['map'])}**  \n{best['avoidable_per_match']:.1f} avoidable deaths per match, "
                         f"won {best['win_rate']:.0%} of {int(best['matches'])}.")
         with right.container(border=True):
-            st.markdown(f"⚠️ **Toughest map: {map_label(worst['map'])}**  \n{worst['avoidable_per_match']:.1f} avoidable deaths per match. "
+            st.markdown(f"{FIX} **Toughest map: {map_label(worst['map'])}**  \n{worst['avoidable_per_match']:.1f} avoidable deaths per match. "
                         f"Most common miss there: **{(worst['top_label'] or 'none').lower()}** ({worst['top_per_match']:.1f} per match).")
             if worst["tip"]:
                 st.markdown(f"**Next time on {map_label(worst['map'])}:** {worst['tip']}")
@@ -1901,9 +1938,9 @@ def render_checklist(habits) -> None:
     if not items and not focus:
         return
     with st.container(border=True):
-        st.markdown("#### 📋 Before your next match")
+        st.markdown("#### Before your next match")
         if focus:
-            st.markdown(f"🎯 **This week's focus: {focus[0].lower()}.**")
+            st.markdown(f"**This week's focus: {focus[0].lower()}.**")
         for i, item in enumerate(items):
             st.checkbox(item, key=f"checklist_{i}")
         text = "Getleanpeek: before your next match\n" + (f"Focus: {focus[0]}\n" if focus else "") + "".join(f"[ ] {i}\n" for i in items)
@@ -1927,7 +1964,7 @@ def render_proof(past: pd.DataFrame, key: str, steamid: str, newest: str) -> Non
         since = newest
         save_setting("focus_since", since)
     proof = build_proof(past, key, since)
-    st.markdown("#### 🏅 Is it working?")
+    st.markdown("#### Is it working?")
     if proof.status == WAITING:
         left = MIN_AFTER - proof.after_matches
         st.write(f"Too early to say: {proof.after_matches} of the {MIN_AFTER} matches needed since you picked this habit. "
@@ -1938,15 +1975,15 @@ def render_proof(past: pd.DataFrame, key: str, steamid: str, newest: str) -> Non
         change = proof.change
         moved = f"from **{change.value(change.earlier)}** to **{change.value()}** ({change_words(change)})"
         if proof.status == IMPROVED:
-            st.markdown(f"✅ **It's working.** {proof.label} went {moved} since you picked it.")
+            st.markdown(f"{GOOD} **It's working.** {proof.label} went {moved} since you picked it.")
             card = proof_card(proof)
             st.image(card, width=520)
             st.download_button("Save this card", card, file_name="getleanpeek-progress.png", mime="image/png", key=f"proof_{key}",
                                help="It shows the habit and the numbers, never your name.", on_click=lambda: track("proof_saved", steamid=steamid, detail=key))
         elif proof.status == WORSE:
-            st.markdown(f"⚠️ **It's slipping.** {proof.label} went {moved} since you picked it.")
+            st.markdown(f"{FIX} **It's slipping.** {proof.label} went {moved} since you picked it.")
         else:
-            st.markdown(f"➖ **No clear change yet.** {proof.label} went {moved}, which is within your normal match-to-match swing.")
+            st.markdown(f"{EVEN} **No clear change yet.** {proof.label} went {moved}, which is within your normal match-to-match swing.")
     st.caption("Counted from your newest stored match when you picked this habit. Compares up to 5 matches before with every match since; "
                "uploaded demos are left out because Getleanpeek can't tell when they were played.")
 
@@ -1971,7 +2008,7 @@ def render_recap(past: pd.DataFrame, steamid: str, newest: str) -> None:
             st.caption(change.label + ("" if change.kind == "rate" else ", per match"))
 
     with st.container(border=True):
-        st.markdown(f"#### 🗓️ Your recap: last {recap.window} matches")
+        st.markdown(f"#### Your recap: last {recap.window} matches")
         st.markdown(recap.headline)
         cols = st.columns(4)
         with cols[0].container(border=True):
@@ -1986,7 +2023,7 @@ def render_recap(past: pd.DataFrame, steamid: str, newest: str) -> None:
         moved_tile(cols[2], "Most improved", recap.improved)
         moved_tile(cols[3], "Slipped most", recap.slipped)
         if recap.slipped and recap.slipped.key != saved_setting("focus") and database() is not None:
-            if st.button(f"🎯 Make \"{recap.slipped.label.lower()}\" my focus"):
+            if st.button(f"Make \"{recap.slipped.label.lower()}\" my focus"):
                 start_focus(recap.slipped.key, newest, steamid)
                 st.rerun()
         note = (f"Compares your last {recap.window} matches with the {recap.window} before them, not calendar weeks, because a demo doesn't "
@@ -1998,7 +2035,7 @@ def render_recap(past: pd.DataFrame, steamid: str, newest: str) -> None:
 
 def render_focus(past: pd.DataFrame, steamid: str, mode: str, newest: str) -> None:
     """Pick one habit to work on; see it match by match against your average."""
-    st.subheader("🎯 Your focus")
+    st.subheader("Your focus")
     keys = list(FOCUS)
     saved = saved_setting("focus")
     choice = st.selectbox(
@@ -2084,12 +2121,12 @@ def render_duo(duo: Duo, name: str, mode: str) -> None:
         st.write("Nothing stood out to fix.")
     for note in fixes:
         with st.container(border=True):
-            st.markdown(f"⚠️ **{note.title}**  \n{note.detail}")
+            st.markdown(f"{FIX} **{note.title}**  \n{note.detail}")
     if keeps:
         st.subheader("Keep doing this")
         for note in keeps:
             with st.container(border=True):
-                st.markdown(f"✅ **{note.title}**  \n{note.detail}")
+                st.markdown(f"{GOOD} **{note.title}**  \n{note.detail}")
     st.caption("A higher win rate together doesn't prove either of you caused it: opponents and the rest of the team change too. "
                "Only rounds you played on the same team count.")
 
@@ -2156,9 +2193,9 @@ def render_habit_openings(matches: list, steamid: str, mode: str) -> None:
         best, worst = rate.idxmax(), rate.idxmin()
         notes = []
         if rate[best] >= 0.5:
-            notes.append(f"✅ Your best spot: **{place_label(best)}** (won {int(spots.at[best, 'sum'])} of {int(spots.at[best, 'size'])}).")
+            notes.append(f"{GOOD} Your best spot: **{place_label(best)}** (won {int(spots.at[best, 'sum'])} of {int(spots.at[best, 'size'])}).")
         if rate[worst] < 0.5 and worst != best:
-            notes.append(f"⚠️ Rethink **{place_label(worst)}**: you lost {int(spots.at[worst, 'size'] - spots.at[worst, 'sum'])} "
+            notes.append(f"{FIX} Rethink **{place_label(worst)}**: you lost {int(spots.at[worst, 'size'] - spots.at[worst, 'sum'])} "
                          f"of {int(spots.at[worst, 'size'])} first fights there. Try another angle or wait for a teammate.")
         st.markdown("  \n".join(notes))
     st.caption("A callout needs a few duels before it means much; spots with only one duel aren't called out.")
@@ -2419,7 +2456,8 @@ def markdown_page(file: str):
     return page
 
 
-st.set_page_config(page_title="Getleanpeek", page_icon="⏱️", layout="wide")
+st.set_page_config(page_title="Getleanpeek", page_icon=str(ROOT / "static" / "icon.png"), layout="wide")
+st.html(STYLE)
 if HOSTED:
     finish_steam_login()
 track("session_start", once=True)
@@ -2432,13 +2470,13 @@ if HOSTED and not guest():
         st.logout()
 navigation = st.navigation(
     [
-        st.Page(report_page, title="Match report", icon="📊", default=True),
-        st.Page(habits_page, title="Your habits", icon="🎯", url_path="habits"),
-        st.Page(duo_page, title="Duo report", icon="👥", url_path="duo"),
-        st.Page(accuracy_page, title="How accurate is it?", icon="🔬", url_path="accuracy"),
-        st.Page(data_page, title="Your data", icon="🗑️", url_path="data"),
-        st.Page(markdown_page("privacy.md"), title="Privacy", icon="🔒", url_path="privacy"),
-        st.Page(markdown_page("terms.md"), title="Terms", icon="📄", url_path="terms"),
+        st.Page(report_page, title="Match report", default=True),
+        st.Page(habits_page, title="Your habits", url_path="habits"),
+        st.Page(duo_page, title="Duo report", url_path="duo"),
+        st.Page(accuracy_page, title="How accurate is it?", url_path="accuracy"),
+        st.Page(data_page, title="Your data", url_path="data"),
+        st.Page(markdown_page("privacy.md"), title="Privacy", url_path="privacy"),
+        st.Page(markdown_page("terms.md"), title="Terms", url_path="terms"),
     ]
 )
 navigation.run()
