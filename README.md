@@ -230,3 +230,6 @@ python -m cs2_insights.link add https://steamcommunity.com/id/<name> CSGO-xxxxx-
 
 ---
 Not affiliated with or endorsed by Valve Corporation. Counter-Strike and CS2 are trademarks of Valve Corporation.
+
+## License
+Copyright (c) 2026 akangbang. **All rights reserved.** The code is public to read, not to reuse: see [LICENSE](LICENSE). For permission, use the contact email in LICENSE.
